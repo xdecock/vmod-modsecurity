@@ -1,0 +1,48 @@
+# build system
+
+.deps/
+.libs/
+autom4te.cache/
+build-aux/
+m4/
+
+*.la
+*.lo
+*.o
+*.tar.gz
+
+Makefile
+Makefile.in
+aclocal.m4
+config.h
+config.h.in
+config.log
+config.status
+configure
+libtool
+stamp-h1
+
+# test suite
+
+*.log
+*.trs
+
+# vmodtool
+
+vcc_*_if.[ch]
+vmod_*.rst
+
+# man
+
+*.1
+*_options.rst
+*_synopsis.rst
+vmod_*.3
+
+# rpm
+
+mockbuild/
+rpmbuild/
+
+*.rpm
+*.spec
