@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <cache/cache_varnishd.h>
+#include <cache/cache_filter.h>
 #include <vcl.h>
 
 
@@ -16,6 +17,16 @@
 #include "vsb.h"
 
 
+static enum vfp_status v_matchproto_(vfp_init_f)
+vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent);
+static void v_matchproto_(vfp_fini_f)
+vfp_modsec_fini(struct vfp_ctx *ctx, struct vfp_entry *ent);
+static enum vfp_status v_matchproto_(vfp_pull_f)
+vfp_modsec_pull(struct vfp_ctx *ctx, struct vfp_entry *ent, void *ptr,
+	    ssize_t *lenp);
+int process_intervention (const struct vrt_ctx *ctx, Transaction *t);
+
+
 struct vmod_sec_sec {
 	unsigned	magic;	// same magic as vmod obj | below
 #define VMOD_SEC_SEC_MAGIC_BITS	0x07a91234
@@ -23,15 +34,39 @@ struct vmod_sec_sec {
 	Rules *rules_set;
 };
 
-int process_intervention (const struct vrt_ctx *ctx, Transaction *t);
+static const struct vfp vfp_modsec = {
+	.name = "modsec",
+	.init = vfp_modsec_init,
+	.pull = vfp_modsec_pull,
+	.fini = vfp_modsec_fini,
+	.priv1 = NULL,
+};
 
 void vmod_sec_log_callback(void *ref, const void *message) {
 	VSL(SLT_Error, 0, "[vmodsec] - Logger");
 	VSL(SLT_Error, 0, "%s", (const char *)message);
 }
 
+int event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event) {
+	ASSERT_CLI();
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	AN(priv);
+
+	switch (event) {
+		case VCL_EVENT_LOAD:
+		case VCL_EVENT_WARM:
+			//VRT_AddVFP(ctx, &vfp_modsec);
+			break;
+		case VCL_EVENT_COLD:
+		case VCL_EVENT_DISCARD:
+			//VRT_RemoveVFP(ctx, &vfp_modsec);
+			break;
+	}
+	return 0;
+}
+
 /*
- * Initialising structure
+ * Initialising structure for modsec object
  */
 VCL_VOID
 vmod_sec__init(VRT_CTX, struct vmod_sec_sec **vpp,
@@ -61,6 +96,7 @@ vmod_sec__init(VRT_CTX, struct vmod_sec_sec **vpp,
 	*vpp=vp;
 	vp->modsec = modsec;
 	vp->rules_set = rules_set;
+	VRT_AddVFP(ctx, &vfp_modsec);
 }
 
 /*
@@ -146,6 +182,8 @@ VCL_INT vmod_sec_process_url(VRT_CTX,
 	unsigned u;
 	const struct http *hp = ctx->req->http;
 	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers", hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
+	char *headerName = malloc(8192);
+	char *headerValue = malloc(8192);
 
 	for (u = HTTP_HDR_FIRST; u < hp->nhd; u++) {
 		Tcheck(hp->hd[u]);
@@ -153,8 +191,6 @@ VCL_INT vmod_sec_process_url(VRT_CTX,
 		long int hlen = strlen(header);
 		int pos = (strchr(header, ':')-header);
 		// XXX: use a workspace (in priv?)
-		char *headerName = malloc(8192);
-		char *headerValue = malloc(8192);
 		if (pos < 0 || pos > 8191 || hlen-pos > 8191) {
 			continue;
 		}
@@ -166,6 +202,8 @@ VCL_INT vmod_sec_process_url(VRT_CTX,
 		msc_add_request_header((Transaction *)(priv->priv), headerName, headerValue);
 		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional header provided %s:%s", headerName, headerValue);
 	}
+	free(headerName);
+	free(headerValue);
 	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Headers");
 	msc_process_request_headers((Transaction *)(priv->priv));
 	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Logging");
@@ -263,17 +301,25 @@ VCL_INT vmod_sec_process_response(VRT_CTX,
 	return 0;
 }
 
-VCL_INT vmod_sec_do_process_response_body(VRT_CTX,
-    struct vmod_sec_sec *vp, struct vmod_priv *priv) {
-		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing response Body");
-		char *response = "<?php phpinfo();?>";
-		msc_append_response_body((Transaction *)(priv->priv), response, strlen(response));
-		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Expected response : %s", msc_get_response_body((Transaction *)priv->priv));
-		msc_process_response_body((Transaction *)(priv->priv));
-		msc_process_logging((Transaction *)(priv->priv));
-		process_intervention(ctx, (Transaction *)(priv->priv));
-		return 0;
-	}
+
+static enum vfp_status v_matchproto_(vfp_init_f)
+vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent)
+{
+	return (VFP_OK);
+}
+
+static void v_matchproto_(vfp_fini_f)
+vfp_modsec_fini(struct vfp_ctx *ctx, struct vfp_entry *ent)
+{
+
+}
+
+static enum vfp_status v_matchproto_(vfp_pull_f)
+vfp_modsec_pull(struct vfp_ctx *ctx, struct vfp_entry *ent, void *ptr,
+	    ssize_t *lenp)
+{
+	return (VFP_OK);
+}
 
 int process_intervention (const struct vrt_ctx *ctx, Transaction *t)
 {

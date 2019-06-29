@@ -1,4 +1,5 @@
 $Module sec 3 "Varnish sec Module"
+$ABI vrt
 
 DESCRIPTION
 ===========
@@ -18,6 +19,8 @@ Example
         }
 
 XXX: define vmod-sec interface
+
+$Event event_function
 
 $Object sec()
 
