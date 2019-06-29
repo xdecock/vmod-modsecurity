@@ -34,35 +34,45 @@ struct vmod_sec_sec {
 	Rules *rules_set;
 };
 
-static const struct vfp vfp_modsec = {
-	.name = "modsec",
-	.init = vfp_modsec_init,
-	.pull = vfp_modsec_pull,
-	.fini = vfp_modsec_fini,
-	.priv1 = NULL,
-};
 
 void vmod_sec_log_callback(void *ref, const void *message) {
 	VSL(SLT_Error, 0, "[vmodsec] - Logger");
 	VSL(SLT_Error, 0, "%s", (const char *)message);
 }
 
+void vmod_modsec_free(void *vmod_priv){
+	free((void *)((struct vfp *)vmod_priv)->name);
+	free(vmod_priv);
+}
+
 int event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event) {
+	return (0);
 	ASSERT_CLI();
 	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
 	AN(priv);
+	struct vfp *vfp_modsec;
 
 	switch (event) {
 		case VCL_EVENT_LOAD:
 		case VCL_EVENT_WARM:
-			//VRT_AddVFP(ctx, &vfp_modsec);
-			break;
+			vfp_modsec = malloc(sizeof(struct vfp));
+			vfp_modsec->name = malloc(sizeof("modsec"));
+			vfp_modsec->name = "modsec";
+			vfp_modsec->init = vfp_modsec_init;
+			vfp_modsec->pull = vfp_modsec_pull;
+			vfp_modsec->fini = vfp_modsec_fini;
+			vfp_modsec->priv1 = priv;
+			priv->priv = vfp_modsec;
+			priv->free = vmod_modsec_free;
+			VRT_AddVFP(ctx, vfp_modsec);
+			return (0);
+
 		case VCL_EVENT_COLD:
 		case VCL_EVENT_DISCARD:
-			//VRT_RemoveVFP(ctx, &vfp_modsec);
-			break;
+			VRT_RemoveVFP(ctx, priv->priv);
+			return (0);
 	}
-	return 0;
+	NEEDLESS(return (0));
 }
 
 /*
@@ -96,7 +106,6 @@ vmod_sec__init(VRT_CTX, struct vmod_sec_sec **vpp,
 	*vpp=vp;
 	vp->modsec = modsec;
 	vp->rules_set = rules_set;
-	VRT_AddVFP(ctx, &vfp_modsec);
 }
 
 /*
@@ -214,7 +223,7 @@ VCL_INT vmod_sec_process_url(VRT_CTX,
 }
 
 static int
-vmod_sec_read_body(void *priv, int flush, const void *ptr, ssize_t len)
+vmod_sec_read_request_body(void *priv, int flush, const void *ptr, ssize_t len)
 {
 
 	AN(priv);
@@ -245,7 +254,7 @@ VCL_INT vmod_sec_do_process_request_body(VRT_CTX,
 
 		int ret;
 
-		ret = VRB_Iterate(ctx->req, vmod_sec_read_body, priv);
+		ret = VRB_Iterate(ctx->req, vmod_sec_read_request_body, priv);
 
 		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Body Iteration Done");
 

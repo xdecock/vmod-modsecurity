@@ -32,13 +32,13 @@ $Method INT .new_conn(PRIV_TOP transaction, STRING client_ip, INT client_port, S
 
 $Method INT .process_url(PRIV_TOP transaction, STRING req_url, STRING protocol, STRING http_version)
 
-# TODO implement as VFP
+#require body buffered
 $Method INT .do_process_request_body(PRIV_TOP transaction)
 
 $Method INT .process_response(PRIV_TOP transaction)
 
 # TODO implement as VFP
-$Method INT .do_process_response_body(PRIV_TOP transaction)
+#do_process_response_body(PRIV_TOP transaction)
 
 Description
     Hello world for vmod-sec
