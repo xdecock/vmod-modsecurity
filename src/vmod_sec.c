@@ -171,6 +171,25 @@ VCL_INT vmod_sec_new_conn(VRT_CTX,
 	return 0;
 }
 
+char *ltrim(char *str, const char *seps)
+{
+    size_t totrim;
+    if (seps == NULL) {
+        seps = "\t\n\v\f\r ";
+    }
+    totrim = strspn(str, seps);
+    if (totrim > 0) {
+        size_t len = strlen(str);
+        if (totrim == len) {
+            str[0] = '\0';
+        }
+        else {
+            memmove(str, str + totrim, len + 1 - totrim);
+        }
+    }
+    return str;
+}
+
 VCL_INT vmod_sec_process_url(VRT_CTX,
 	struct vmod_sec_sec *vp, struct vmod_priv *priv, 
 	VCL_STRING req_url, VCL_STRING protocol, VCL_STRING http_version) {
@@ -207,9 +226,10 @@ VCL_INT vmod_sec_process_url(VRT_CTX,
 		strncpy(headerName, header, pos);
 		headerName[pos]='\0';
 		strncpy(headerValue, &header[pos+1], hlen-pos-1);
-		headerValue[hlen-pos]='\0';
+		headerValue[hlen-pos-1]='\0';
+		ltrim(headerValue, " "); // TODO Check RFC to confirm [WS] is the only valid
 		msc_add_request_header((Transaction *)(priv->priv), headerName, headerValue);
-		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional header provided %s:%s", headerName, headerValue);
+		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional header provided %s: %s", headerName, headerValue);
 	}
 	free(headerName);
 	free(headerValue);
@@ -285,14 +305,15 @@ VCL_INT vmod_sec_process_response(VRT_CTX,
 	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Headers");
 	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers", hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
 
+	char *headerName = malloc(8192);
+	char *headerValue = malloc(8192);
+
 	for (u = HTTP_HDR_FIRST; u < hp->nhd; u++) {
 		Tcheck(hp->hd[u]);
 		const char *header = hp->hd[u].b;
 		long int hlen = strlen(header);
 		int pos = (strchr(header, ':')-header);
 		// XXX: use a workspace (in priv?)
-		char *headerName = malloc(8192);
-		char *headerValue = malloc(8192);
 		if (pos < 0 || pos > 8191 || hlen-pos > 8191) {
 			continue;
 		}
@@ -300,10 +321,13 @@ VCL_INT vmod_sec_process_response(VRT_CTX,
 		strncpy(headerName, header, pos);
 		headerName[pos]='\0';
 		strncpy(headerValue, &header[pos+1], hlen-pos-1);
-		headerValue[hlen-pos]='\0';
+		headerValue[hlen-pos-1]='\0';
+		ltrim(headerValue, " "); // TODO Check RFC to confirm [WS] is the only valid
 		msc_add_response_header((Transaction *)(priv->priv), headerName, headerValue);
-		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s:%s", headerName, headerValue);
+		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s: %s", headerName, headerValue);
 	}
+	free(headerName);
+	free(headerValue);
 	msc_process_response_headers((Transaction *)(priv->priv), ctx->req->resp->status, "HTTP 1.1"); // Fixme get protocol dynamic
 	msc_process_logging((Transaction *)(priv->priv));
 	process_intervention(ctx, (Transaction *)(priv->priv));
