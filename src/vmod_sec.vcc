@@ -26,22 +26,21 @@ $Object sec()
 
 $Method INT .add_rules(STRING rules_path)
 
+$Method INT .add_remote_rules(STRING key, STRING rules_path)
+
 $Method INT .dump_rules()
 
 $Method INT .new_conn(PRIV_TOP transaction, STRING client_ip, INT client_port, STRING server_ip, INT server_port)
 
 $Method INT .process_url(PRIV_TOP transaction, STRING req_url, STRING protocol, STRING http_version)
 
-#require body buffered
+#require body buffered TODO, implement as stream buffer
 $Method INT .do_process_request_body(PRIV_TOP transaction)
 
 $Method INT .process_response(PRIV_TOP transaction)
 
 # TODO implement as VFP
-#do_process_response_body(PRIV_TOP transaction)
-
-Description
-    Hello world for vmod-sec
+$Method INT .do_process_response_body(PRIV_TOP transaction)
 
 SEE ALSO
 ========vcl\(7),varnishd\(1)

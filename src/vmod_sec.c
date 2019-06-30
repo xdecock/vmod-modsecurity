@@ -124,6 +124,33 @@ vmod_sec__fini(struct vmod_sec_sec **vpp) {
 	FREE_OBJ(vp);
 }
 
+VCL_INT vmod_sec_add_remote_rules(VRT_CTX, struct vmod_sec_sec *vp,
+    VCL_STRING key, VCL_STRING main_rules_uri) {
+	Rules *rules_set;
+	int ret;
+    const char *error = NULL;
+
+	VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Try to load the rules", main_rules_uri);
+	CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
+	rules_set = msc_create_rules_set();
+    ret = msc_rules_add_remote(rules_set, key, main_rules_uri, &error);
+    if (ret < 0) {
+        VSL(SLT_Error, 0, "[vmodsec] - Problems loading the rules --\n");
+        VSL(SLT_Error, 0, "%s\n", error);
+		return -1;
+    }
+	VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the rules", main_rules_uri);
+	VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merging rules in main rule set", main_rules_uri);
+	ret = msc_rules_merge(vp->rules_set, rules_set, &error);
+    if (ret < 0) {
+        VSL(SLT_Error, 0, "[vmodsec] - Problems merging the rules --\n");
+        VSL(SLT_Error, 0, "%s\n", error);
+		return -1;
+    }
+	VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merged rules", main_rules_uri);
+	return 0;
+}
+
 VCL_INT vmod_sec_add_rules(VRT_CTX, struct vmod_sec_sec *vp,
     VCL_STRING main_rules_uri) {
 	Rules *rules_set;
@@ -247,7 +274,6 @@ vmod_sec_read_request_body(void *priv, int flush, const void *ptr, ssize_t len)
 {
 
 	AN(priv);
-
 	(void)flush;
 	int ret;
 	ret = (msc_append_request_body(((Transaction *)((struct vmod_priv *)priv)->priv), ptr, len)) == 1? 0 : -1;
@@ -255,6 +281,7 @@ vmod_sec_read_request_body(void *priv, int flush, const void *ptr, ssize_t len)
 	return ret;
 
 }
+
 
 VCL_INT vmod_sec_do_process_request_body(VRT_CTX,
     struct vmod_sec_sec *vp, struct vmod_priv *priv) {
@@ -322,7 +349,7 @@ VCL_INT vmod_sec_process_response(VRT_CTX,
 		headerName[pos]='\0';
 		strncpy(headerValue, &header[pos+1], hlen-pos-1);
 		headerValue[hlen-pos-1]='\0';
-		ltrim(headerValue, " "); // TODO Check RFC to confirm [WS] is the only valid
+		ltrim(headerValue, " "); // TODO Check RFC to confirm [WS] is the only valid PS : will be faster to use a single copy instead of ltrim
 		msc_add_response_header((Transaction *)(priv->priv), headerName, headerValue);
 		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s: %s", headerName, headerValue);
 	}
@@ -334,6 +361,49 @@ VCL_INT vmod_sec_process_response(VRT_CTX,
 	return 0;
 }
 
+static int
+vmod_sec_read_response_body(void *priv, int flush, const void *ptr, ssize_t len)
+{
+
+	AN(priv);
+	(void)flush;
+	int ret;
+	ret = (msc_append_response_body(((Transaction *)((struct vmod_priv *)priv)->priv), ptr, len)) == 1? 0 : -1;
+	VSL(SLT_Debug, 0, "[vmodsec] - Reading response body [%ld] read, [%d] ret", len, ret);
+	return ret;
+
+}
+
+VCL_INT vmod_sec_do_process_response_body(VRT_CTX,
+    struct vmod_sec_sec *vp, struct vmod_priv *priv) {
+	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+	CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
+	AN(ctx->vsl);
+
+	if (priv->priv == NULL) {
+		VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+		return -1;
+	}
+
+	int ret;
+	// int ObjIterate(struct worker *, struct objcore *, void *priv, objiterate_f *func, int final);
+	// Final must be kept to 0 otherwise, we do lose the process
+	ret = ObjIterate(ctx->req->wrk, ctx->req->objcore, priv, vmod_sec_read_response_body, 0);
+
+	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Body Iteration Done");
+
+	if (ret < 0) {
+		VSL(SLT_Error, ctx->sp->vxid, "[vmodsec] - Iteration on resp.body didn't succeed. %d", ret);
+
+		return -1;
+	}
+
+	VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
+	msc_process_response_body((Transaction *)(priv->priv));
+	msc_process_logging((Transaction *)(priv->priv));
+	process_intervention(ctx, (Transaction *)(priv->priv));
+	return 0;
+}
 
 static enum vfp_status v_matchproto_(vfp_init_f)
 vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent)
