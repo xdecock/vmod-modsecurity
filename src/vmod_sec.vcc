@@ -40,5 +40,7 @@ $Method INT .process_response(PRIV_TOP, STRING protocol="HTTP 1.1")
 # TODO implement as VFP
 $Method INT .do_process_response_body(PRIV_TOP)
 
+$Method INT .conn_reset(PRIV_TOP)
+
 SEE ALSO
 ========vcl\(7),varnishd\(1)
