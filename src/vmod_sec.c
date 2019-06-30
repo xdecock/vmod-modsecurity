@@ -255,7 +255,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     if (priv->priv == NULL)
     {
-        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        VSL(SLT_Error, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
         return -1;
     }
     /* This will be used to Initialise the original URL */
@@ -263,13 +263,14 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
     VSL(SLT_Debug, ctx->sp->vxid,
         "[vmodsec] - Processing URI : [%s] on protocol [%s] with version [%s]",
         req_url, protocol, http_version);
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Checking intevention");
     process_intervention(ctx, (Transaction *)(priv->priv));
 
     /* Handling headers */
     unsigned u;
     const struct http *hp = ctx->req->http;
+#ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers", hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
+#endif
     char *headerName = malloc(8192);
     char *headerValue = malloc(8192);
 
@@ -292,14 +293,17 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
         strncpy(headerValue, &header[pos], hlen - pos);
         headerValue[hlen - pos] = '\0'; 
         msc_add_request_header((Transaction *)(priv->priv), headerName, headerValue);
+#ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid,
             "[vmodsec] - Additional header provided %s: %s", headerName, headerValue);
+#endif
     }
     free(headerName);
     free(headerValue);
+#ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Headers");
+#endif
     msc_process_request_headers((Transaction *)(priv->priv));
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Checking intevention");
     process_intervention(ctx, (Transaction *)(priv->priv));
     return (0);
 }
@@ -312,7 +316,9 @@ static int v_matchproto_(objiterate_f)
     (void)flush;
     int ret;
     ret = (msc_append_request_body(((Transaction *)((struct vmod_priv *)priv)->priv), ptr, len)) == 1 ? 0 : -1;
+#ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, 0, "[vmodsec] - Reading request body [%ld] read, [%d] ret", len, ret);
+#endif
     return ret;
 }
 
@@ -370,9 +376,11 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
     /* Handling headers */
     unsigned u;
     const struct http *hp = ctx->req->resp;
+#ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Headers");
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers",
         hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
+#endif
 
     char *headerName = malloc(8192);
     char *headerValue = malloc(8192);
@@ -396,8 +404,10 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
         strncpy(headerValue, &header[pos], hlen - pos);
         headerValue[hlen - pos] = '\0'; 
         msc_add_response_header((Transaction *)(priv->priv), headerName, headerValue);
+#ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s: %s",
             headerName, headerValue);
+#endif
     }
     free(headerName);
     free(headerValue);
@@ -434,7 +444,7 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
 
     if (priv->priv == NULL)
     {
-        VSL(SLT_Debug, ctx->sp->vxid,
+        VSL(SLT_Error, ctx->sp->vxid,
             "[vmodsec] - connection has not been started, closing");
         return -1;
     }
