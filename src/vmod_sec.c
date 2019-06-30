@@ -35,7 +35,7 @@ struct vmod_sec_sec
 
 void vmod_sec_log_callback(void *ref, const void *message)
 {
-    VSL(SLT_Error, 0, "[vmodsec] - Logger");
+    VSL(SLT_Error, 0, "[vmodsec] - Logger -- ");
     VSL(SLT_Error, 0, "%s", (const char *)message);
 }
 
@@ -127,6 +127,38 @@ VCL_VOID v_matchproto_(td_sec_sec__fini)
     msc_cleanup(vp->modsec);
     FREE_OBJ(vp);
 }
+// TODO See if we can do a macro betweek add_rule & add_rules
+VCL_INT v_matchproto_(td_sec_sec_add_rule)
+    vmod_sec_add_rule(VRT_CTX, struct vmod_sec_sec *vp,
+    VCL_STRING rule) {
+    Rules *rules_set;
+    int ret;
+    const char *error = NULL;
+    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - VCL provided rule", rule);
+    CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
+    rules_set = msc_create_rules_set();
+    ret = msc_rules_add(rules_set, rule, &error);
+    if (ret < 0)
+    {
+        msc_rules_cleanup(rules_set); // Avoid memleak
+        VSL(SLT_Error, 0, "[vmodsec] - Problems loading the VCL provided rule --\n");
+        VSL(SLT_Error, 0, "%s\n", error);
+        return -1;
+    }
+    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the VCL provided rule", rule);
+    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merging rules in main rule set", rule);
+    ret = msc_rules_merge(vp->rules_set, rules_set, &error);
+    msc_rules_cleanup(rules_set); // Avoid memleak
+    if (ret < 0)
+    {
+        VSL(SLT_Error, 0, "[vmodsec] - Problems merging the VCL provided rule --\n");
+        VSL(SLT_Error, 0, "%s\n", error);
+        return -1;
+    }
+    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merged VCL provided rule", rule);
+    return 0;
+}
+
 
 VCL_INT v_matchproto_(td_sec_sec_add_rules)
     vmod_sec_add_rules(VRT_CTX, struct vmod_sec_sec *vp,
@@ -174,6 +206,13 @@ VCL_INT v_matchproto_(td_sec_sec_dump_rules)
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
     msc_rules_dump(vp->rules_set);
 }
+void v_matchproto_(vmod_priv_free_f)
+    vmod_sec_cleanup_transaction (void *ptr ){
+    // Log before cleanup
+    msc_process_logging((Transaction *)(ptr));
+    msc_transaction_cleanup((Transaction *)(ptr));
+}
+
 
 VCL_INT v_matchproto_(td_sec_sec_new_conn)
     vmod_sec_new_conn(VRT_CTX, struct vmod_sec_sec *vp,
@@ -203,7 +242,7 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
     VSL(SLT_Debug, ctx->sp->vxid,
         "[vmodsec] - Started processing Transaction for [%s:%ld] with server [%s:%ld]",
         args->client_ip, args->client_port, args->server_ip, args->server_port);
-    msc_process_logging((Transaction *)(args->arg1->priv));
+    
     process_intervention(ctx, (Transaction *)(args->arg1->priv));
     return 0;
 }
@@ -226,8 +265,6 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
         req_url, protocol, http_version);
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Checking intevention");
     process_intervention(ctx, (Transaction *)(priv->priv));
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Logging");
-    msc_process_logging((Transaction *)(priv->priv));
 
     /* Handling headers */
     unsigned u;
@@ -262,8 +299,6 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
     free(headerValue);
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Headers");
     msc_process_request_headers((Transaction *)(priv->priv));
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Logging");
-    msc_process_logging((Transaction *)(priv->priv));
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Checking intevention");
     process_intervention(ctx, (Transaction *)(priv->priv));
     return (0);
@@ -318,7 +353,6 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
 
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Body");
     msc_process_request_body((Transaction *)(priv->priv));
-    msc_process_logging((Transaction *)(priv->priv));
     process_intervention(ctx, (Transaction *)(priv->priv));
     return 0;
 }
@@ -370,7 +404,6 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
     msc_process_response_headers(
         (Transaction *)(priv->priv),
         ctx->req->resp->status, protocol);
-    msc_process_logging((Transaction *)(priv->priv));
     process_intervention(ctx, (Transaction *)(priv->priv));
     return 0;
 }
@@ -423,7 +456,6 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
 
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
     msc_process_response_body((Transaction *)(priv->priv));
-    msc_process_logging((Transaction *)(priv->priv));
     process_intervention(ctx, (Transaction *)(priv->priv));
     return 0;
 }
