@@ -149,6 +149,7 @@ VCL_INT v_matchproto_(td_sec_sec_add_rules)
     }
     if (ret < 0)
     {
+        msc_rules_cleanup(rules_set); // Avoid memleak
         VSL(SLT_Error, 0, "[vmodsec] - Problems loading the rules --\n");
         VSL(SLT_Error, 0, "%s\n", error);
         return -1;
@@ -156,6 +157,7 @@ VCL_INT v_matchproto_(td_sec_sec_add_rules)
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the rules", args->rules_path);
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merging rules in main rule set", args->rules_path);
     ret = msc_rules_merge(vp->rules_set, rules_set, &error);
+    msc_rules_cleanup(rules_set); // Avoid memleak
     if (ret < 0)
     {
         VSL(SLT_Error, 0, "[vmodsec] - Problems merging the rules --\n");

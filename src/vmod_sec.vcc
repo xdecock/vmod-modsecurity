@@ -24,6 +24,8 @@ $Event event_function
 
 $Object sec()
 
+$Method INT .add_rule(STRING rules_string)
+
 $Method INT .add_rules(STRING rules_path, [STRING key])
 
 $Method INT .dump_rules()
