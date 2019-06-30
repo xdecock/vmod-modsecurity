@@ -488,12 +488,6 @@ static int process_intervention(const struct vrt_ctx *ctx, Transaction *t)
     return 0;
 }
 
-/*
- * For vmod_conn_reset (from libvmod-shield):
- *
- * Copyright (c) 2011 Varnish Software AS
- * All rights reserved.
- */
 VCL_INT v_matchproto_(td_sec_sec_conn_reset)
 vmod_sec_conn_reset(VRT_CTX,
     struct vmod_sec_sec *vp, struct vmod_priv *priv)
