@@ -24,23 +24,21 @@ $Event event_function
 
 $Object sec()
 
-$Method INT .add_rules(STRING rules_path)
-
-$Method INT .add_remote_rules(STRING key, STRING rules_path)
+$Method INT .add_rules(STRING rules_path, [STRING key])
 
 $Method INT .dump_rules()
 
-$Method INT .new_conn(PRIV_TOP transaction, STRING client_ip, INT client_port, STRING server_ip, INT server_port)
+$Method INT .new_conn(PRIV_TOP, STRING client_ip, INT client_port, STRING server_ip, INT server_port, [STRING transaction_id])
 
-$Method INT .process_url(PRIV_TOP transaction, STRING req_url, STRING protocol, STRING http_version)
+$Method INT .process_url(PRIV_TOP, STRING req_url, STRING protocol, STRING http_version)
 
 #require body buffered TODO, implement as stream buffer
-$Method INT .do_process_request_body(PRIV_TOP transaction)
+$Method INT .do_process_request_body(PRIV_TOP)
 
-$Method INT .process_response(PRIV_TOP transaction)
+$Method INT .process_response(PRIV_TOP, STRING protocol="HTTP 1.1")
 
 # TODO implement as VFP
-$Method INT .do_process_response_body(PRIV_TOP transaction)
+$Method INT .do_process_response_body(PRIV_TOP)
 
 SEE ALSO
 ========vcl\(7),varnishd\(1)
