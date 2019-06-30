@@ -206,29 +206,6 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
     return 0;
 }
 
-char *ltrim(char *str, const char *seps)
-{
-    size_t totrim;
-    if (seps == NULL)
-    {
-        seps = "\t\n\v\f\r ";
-    }
-    totrim = strspn(str, seps);
-    if (totrim > 0)
-    {
-        size_t len = strlen(str);
-        if (totrim == len)
-        {
-            str[0] = '\0';
-        }
-        else
-        {
-            memmove(str, str + totrim, len + 1 - totrim);
-        }
-    }
-    return str;
-}
-
 VCL_INT v_matchproto_(td_sec_sec_process_url)
     vmod_sec_process_url(VRT_CTX,
                          struct vmod_sec_sec *vp, struct vmod_priv *priv,
