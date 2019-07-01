@@ -324,40 +324,43 @@ static int v_matchproto_(objiterate_f)
 
 VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
     vmod_sec_do_process_request_body(VRT_CTX,
-                                     struct vmod_sec_sec *vp, struct vmod_priv *priv)
+            struct vmod_sec_sec *vp, struct vmod_priv *priv, VCL_BOOL capture_body)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
     AN(ctx->vsl);
-
     if (priv->priv == NULL)
     {
         VSL(SLT_Debug, ctx->sp->vxid,
             "[vmodsec] - connection has not been started, closing");
         return -1;
     }
-    const struct http *hp = ctx->req->http;
-    if (ctx->req->req_body_status != REQ_BODY_CACHED)
-    {
-        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Unbuffered req.body");
-        return -1;
+
+    if (capture_body) {
+        const struct http *hp = ctx->req->http;
+        if (ctx->req->req_body_status != REQ_BODY_CACHED)
+        {
+            VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Unbuffered req.body");
+            return -1;
+        }
+
+        int ret;
+
+        ret = VRB_Iterate(ctx->req, vmod_sec_read_request_body, priv);
+
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Body Iteration Done");
+
+        if (ret < 0)
+        {
+            VSL(SLT_Error, ctx->sp->vxid,
+                "[vmodsec] - Iteration on req.body didn't succeed. %d", ret);
+
+            return -1;
+        }
+
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Body");
     }
 
-    int ret;
-
-    ret = VRB_Iterate(ctx->req, vmod_sec_read_request_body, priv);
-
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Body Iteration Done");
-
-    if (ret < 0)
-    {
-        VSL(SLT_Error, ctx->sp->vxid,
-            "[vmodsec] - Iteration on req.body didn't succeed. %d", ret);
-
-        return -1;
-    }
-
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Body");
     msc_process_request_body((Transaction *)(priv->priv));
     process_intervention(ctx, (Transaction *)(priv->priv));
     return 0;
@@ -436,7 +439,7 @@ static int v_matchproto_(objiterate_f)
 
 VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
     vmod_sec_do_process_response_body(VRT_CTX,
-                                      struct vmod_sec_sec *vp, struct vmod_priv *priv)
+                                      struct vmod_sec_sec *vp, struct vmod_priv *priv, VCL_BOOL capture_body)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
@@ -448,23 +451,24 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
             "[vmodsec] - connection has not been started, closing");
         return -1;
     }
+    if (capture_body) {
+       int ret;
+        // int ObjIterate(struct worker *, struct objcore *, void *priv, objiterate_f *func, int final);
+        // Final must be kept to 0 otherwise, we do lose the process
+        ret = ObjIterate(ctx->req->wrk, ctx->req->objcore, priv, vmod_sec_read_response_body, 0);
 
-    int ret;
-    // int ObjIterate(struct worker *, struct objcore *, void *priv, objiterate_f *func, int final);
-    // Final must be kept to 0 otherwise, we do lose the process
-    ret = ObjIterate(ctx->req->wrk, ctx->req->objcore, priv, vmod_sec_read_response_body, 0);
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Body Iteration Done");
 
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Body Iteration Done");
+        if (ret < 0)
+        {
+            VSL(SLT_Error, ctx->sp->vxid,
+                "[vmodsec] - Iteration on resp.body didn't succeed. %d", ret);
 
-    if (ret < 0)
-    {
-        VSL(SLT_Error, ctx->sp->vxid,
-            "[vmodsec] - Iteration on resp.body didn't succeed. %d", ret);
+            return -1;
+        }
 
-        return -1;
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
     }
-
-    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
     msc_process_response_body((Transaction *)(priv->priv));
     process_intervention(ctx, (Transaction *)(priv->priv));
     return 0;
