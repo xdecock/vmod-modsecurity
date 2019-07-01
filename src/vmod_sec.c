@@ -16,15 +16,6 @@
 #include "vre.h"
 #include "vsb.h"
 
-static enum vfp_status v_matchproto_(vfp_init_f)
-    vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent);
-static void v_matchproto_(vfp_fini_f)
-    vfp_modsec_fini(struct vfp_ctx *ctx, struct vfp_entry *ent);
-static enum vfp_status v_matchproto_(vfp_pull_f)
-    vfp_modsec_pull(struct vfp_ctx *ctx, struct vfp_entry *ent, void *ptr,
-                    ssize_t *lenp);
-static int process_intervention(const struct vrt_ctx *ctx, Transaction *t);
-
 struct vmod_sec_sec
 {
     unsigned magic; // same magic as vmod obj | below
@@ -32,6 +23,30 @@ struct vmod_sec_sec
     ModSecurity *modsec;
     Rules *rules_set;
 };
+
+#define VMODSEC_TRANS_STATE_INIT = 1;
+#define VMODSEC_TRANS_STATE_REQHEAD = 2;
+#define VMODSEC_TRANS_STATE_REQBODY = 3;
+#define VMODSEC_TRANS_STATE_RESPSTATUS = 4;
+#define VMODSEC_TRANS_STATE_RESPHEAD = 5;
+#define VMODSEC_TRANS_STATE_RESPBODY = 6;
+
+struct vmod_sec_trans_int
+{
+    Transaction *trans;
+    ModSecurityIntervention intervention;
+};
+
+
+
+static enum vfp_status v_matchproto_(vfp_init_f)
+    vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent);
+static void v_matchproto_(vfp_fini_f)
+    vfp_modsec_fini(struct vfp_ctx *ctx, struct vfp_entry *ent);
+static enum vfp_status v_matchproto_(vfp_pull_f)
+    vfp_modsec_pull(struct vfp_ctx *ctx, struct vfp_entry *ent, void *ptr,
+                    ssize_t *lenp);
+static int process_intervention(struct vmod_sec_trans_int *transInt);
 
 void vmod_sec_log_callback(void *ref, const void *message)
 {
@@ -206,11 +221,15 @@ VCL_INT v_matchproto_(td_sec_sec_dump_rules)
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
     msc_rules_dump(vp->rules_set);
 }
+
 void v_matchproto_(vmod_priv_free_f)
     vmod_sec_cleanup_transaction (void *ptr ){
+    struct vmod_sec_trans_int *transInt;
+    transInt = (struct vmod_sec_trans_int *) ptr;
     // Log before cleanup
-    msc_process_logging((Transaction *)(ptr));
-    msc_transaction_cleanup((Transaction *)(ptr));
+    msc_process_logging((transInt->trans));
+    msc_transaction_cleanup((transInt->trans));
+    free(transInt);
 }
 
 
@@ -219,31 +238,42 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
                       struct vmod_sec_new_conn_arg *args)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    struct vmod_sec_trans_int* transInt;
     if (args->arg1->priv == NULL)
     {
+        transInt = malloc(sizeof(struct vmod_sec_trans_int));
+
+        /* Init intervention */
+        transInt->intervention.status = 200;
+        transInt->intervention.pause = 0;
+        transInt->intervention.url = NULL;
+        transInt->intervention.log = NULL;
+        transInt->intervention.disruptive = 0;
+
         if (args->valid_transaction_id)
         {
             char *transaction_id = malloc(strlen(args->transaction_id));
             strcpy(transaction_id, args->transaction_id);
-            args->arg1->priv = msc_new_transaction_with_id(
+            transInt->trans = msc_new_transaction_with_id(
                 vp->modsec, vp->rules_set, transaction_id, args->arg1);
             free(transaction_id);
         }
         else
         {
-            args->arg1->priv = msc_new_transaction(
+            transInt->trans = msc_new_transaction(
                 vp->modsec, vp->rules_set, args->arg1);
         }
-        args->arg1->free = (void *)(void *)msc_transaction_cleanup;
+        args->arg1->priv = transInt;
+        args->arg1->free = vmod_sec_cleanup_transaction;
     }
-    msc_process_connection((Transaction *)(args->arg1->priv),
+    msc_process_connection(transInt->trans,
                            args->client_ip, args->client_port,
                            args->server_ip, args->server_port);
     VSL(SLT_Debug, ctx->sp->vxid,
         "[vmodsec] - Started processing Transaction for [%s:%ld] with server [%s:%ld]",
         args->client_ip, args->client_port, args->server_ip, args->server_port);
     
-    process_intervention(ctx, (Transaction *)(args->arg1->priv));
+    process_intervention(transInt);
     return 0;
 }
 
@@ -258,12 +288,13 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
         VSL(SLT_Error, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
         return -1;
     }
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
     /* This will be used to Initialise the original URL */
-    msc_process_uri((Transaction *)(priv->priv), req_url, protocol, http_version);
+    msc_process_uri(transInt->trans, req_url, protocol, http_version);
     VSL(SLT_Debug, ctx->sp->vxid,
         "[vmodsec] - Processing URI : [%s] on protocol [%s] with version [%s]",
         req_url, protocol, http_version);
-    process_intervention(ctx, (Transaction *)(priv->priv));
+    process_intervention(transInt);
 
     /* Handling headers */
     unsigned u;
@@ -292,7 +323,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
         pos += 1/* : */ + strspn(&header[pos + 1], " \r\n\t"); // LWS = [CRLF] 1*( SP | HT ) chr(9,10,13,32)
         strncpy(headerValue, &header[pos], hlen - pos);
         headerValue[hlen - pos] = '\0'; 
-        msc_add_request_header((Transaction *)(priv->priv), headerName, headerValue);
+        msc_add_request_header(transInt->trans, headerName, headerValue);
 #ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid,
             "[vmodsec] - Additional header provided %s: %s", headerName, headerValue);
@@ -303,8 +334,8 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Headers");
 #endif
-    msc_process_request_headers((Transaction *)(priv->priv));
-    process_intervention(ctx, (Transaction *)(priv->priv));
+    msc_process_request_headers(transInt->trans);
+    process_intervention(transInt);
     return (0);
 }
 
@@ -315,7 +346,8 @@ static int v_matchproto_(objiterate_f)
     AN(priv);
     (void)flush;
     int ret;
-    ret = (msc_append_request_body(((Transaction *)((struct vmod_priv *)priv)->priv), ptr, len)) == 1 ? 0 : -1;
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)((struct vmod_priv *)priv)->priv;
+    ret = (msc_append_request_body(transInt->trans, ptr, len)) == 1 ? 0 : -1;
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, 0, "[vmodsec] - Reading request body [%ld] read, [%d] ret", len, ret);
 #endif
@@ -335,8 +367,9 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
             "[vmodsec] - connection has not been started, closing");
         return -1;
     }
-
-    if (capture_body) {
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    VSL(SLT_Debug, 0, "[vmodsec] - Reading request body ? %d", capture_body);
+    if (capture_body == 1) {
         const struct http *hp = ctx->req->http;
         if (ctx->req->req_body_status != REQ_BODY_CACHED)
         {
@@ -361,8 +394,8 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Body");
     }
 
-    msc_process_request_body((Transaction *)(priv->priv));
-    process_intervention(ctx, (Transaction *)(priv->priv));
+    msc_process_request_body(transInt->trans);
+    process_intervention(transInt);
     return 0;
 }
 
@@ -376,6 +409,8 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
         return -1;
     }
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+
     /* Handling headers */
     unsigned u;
     const struct http *hp = ctx->req->resp;
@@ -406,7 +441,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
         pos += 1/* : */ + strspn(&header[pos + 1], " \r\n\t"); // LWS = [CRLF] 1*( SP | HT ) chr(9,10,13,32)
         strncpy(headerValue, &header[pos], hlen - pos);
         headerValue[hlen - pos] = '\0'; 
-        msc_add_response_header((Transaction *)(priv->priv), headerName, headerValue);
+        msc_add_response_header(transInt->trans, headerName, headerValue);
 #ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s: %s",
             headerName, headerValue);
@@ -415,9 +450,9 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
     free(headerName);
     free(headerValue);
     msc_process_response_headers(
-        (Transaction *)(priv->priv),
+        transInt->trans,
         ctx->req->resp->status, protocol);
-    process_intervention(ctx, (Transaction *)(priv->priv));
+    process_intervention(transInt);
     return 0;
 }
 
@@ -428,11 +463,8 @@ static int v_matchproto_(objiterate_f)
     AN(priv);
     (void)flush;
     int ret;
-    ret = (msc_append_response_body(
-              ((Transaction *)((struct vmod_priv *)priv)->priv),
-              ptr, len)) == 1
-              ? 0
-              : -1;
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)((struct vmod_priv *)priv)->priv;
+    ret = (msc_append_response_body(transInt->trans, ptr, len)) == 1 ? 0 : -1;
     VSL(SLT_Debug, 0, "[vmodsec] - Reading response body [%ld] read, [%d] ret", len, ret);
     return ret;
 }
@@ -447,11 +479,11 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
 
     if (priv->priv == NULL)
     {
-        VSL(SLT_Error, ctx->sp->vxid,
-            "[vmodsec] - connection has not been started, closing");
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
         return -1;
     }
-    if (capture_body) {
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    if (capture_body == 1) {
        int ret;
         // int ObjIterate(struct worker *, struct objcore *, void *priv, objiterate_f *func, int final);
         // Final must be kept to 0 otherwise, we do lose the process
@@ -469,8 +501,8 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
 
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
     }
-    msc_process_response_body((Transaction *)(priv->priv));
-    process_intervention(ctx, (Transaction *)(priv->priv));
+    msc_process_response_body(transInt->trans);
+    process_intervention(transInt);
     return 0;
 }
 
@@ -492,52 +524,14 @@ static enum vfp_status v_matchproto_(vfp_pull_f)
     return (VFP_OK);
 }
 
-static int process_intervention(const struct vrt_ctx *ctx, Transaction *t)
+static int process_intervention(struct vmod_sec_trans_int *transInt)
 {
-    ModSecurityIntervention intervention;
-    intervention.status = 0;
-    intervention.url = NULL;
-    intervention.log = NULL;
-    intervention.disruptive = 0;
-
-    int z = msc_intervention(t, &intervention);
-
-    if (z == 0)
-    {
-        VSL(SLT_Debug, ctx->sp->vxid,
-            "[vmodsec] - Intervention Unnecessary");
-        return 0;
-    }
-
-    if (intervention.log == NULL)
-    {
-        intervention.log = "(no log message was specified)";
-    }
-
-    if (intervention.status == 301 || intervention.status == 302 || intervention.status == 303 || intervention.status == 307)
-    {
-        if (intervention.url != NULL)
-        {
-        }
-        else
-        {
-            intervention.url = "same";
-        }
-    }
-    VSL(SLT_Debug, ctx->sp->vxid,
-        "[vmodsec] - Intervention : st %d disrupt %d url [%s] log [%s] ",
-        intervention.status, intervention.disruptive, intervention.url, intervention.log);
-
-    if (intervention.status != 0)
-    {
-        return intervention.status;
-    }
-
-    return 0;
+    int z = msc_intervention(transInt->trans, &transInt->intervention);
+    return z;
 }
 
-VCL_INT v_matchproto_(td_sec_sec_conn_reset)
-vmod_sec_conn_reset(VRT_CTX,
+VCL_INT v_matchproto_(td_sec_sec_conn_close)
+vmod_sec_conn_close(VRT_CTX,
     struct vmod_sec_sec *vp, struct vmod_priv *priv)
 {
 	CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
@@ -545,4 +539,86 @@ vmod_sec_conn_reset(VRT_CTX,
 	ctx->req->restarts = cache_param->max_restarts;
 	Req_Fail(ctx->req, SC_RX_JUNK);
     return 0;
+}
+
+VCL_BOOL v_matchproto_(td_sec_sec_intervention_getDisrupt)
+vmod_sec_intervention_getDisrupt(VRT_CTX,
+    struct vmod_sec_sec *vp, struct vmod_priv *priv) {
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
+    AN(ctx->vsl);
+
+    if (priv->priv == NULL)
+    {
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        return -1;
+    }
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    return transInt->intervention.disruptive;
+}
+
+VCL_INT v_matchproto_(td_sec_sec_intervention_getStatus)
+vmod_sec_intervention_getStatus(VRT_CTX,
+    struct vmod_sec_sec *vp, struct vmod_priv *priv) {
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
+    AN(ctx->vsl);
+
+    if (priv->priv == NULL)
+    {
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        return -1;
+    }
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    return transInt->intervention.status;
+}
+    
+VCL_STRING v_matchproto_(td_sec_sec_intervention_getUrl)
+vmod_sec_intervention_getUrl(VRT_CTX,
+    struct vmod_sec_sec *vp, struct vmod_priv *priv){
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
+    AN(ctx->vsl);
+
+    if (priv->priv == NULL)
+    {
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        return "";
+    }
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    return transInt->intervention.url;
+}
+
+VCL_DURATION v_matchproto_(td_sec_sec_intervention_getPause)
+vmod_sec_intervention_getPause(VRT_CTX,
+    struct vmod_sec_sec *vp, struct vmod_priv *priv){
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
+    AN(ctx->vsl);
+
+    if (priv->priv == NULL)
+    {
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        return 0.0;
+    }
+    double duration = 0.0;
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    duration = transInt->intervention.pause/1000;
+    return duration;
+}
+
+VCL_STRING v_matchproto_(td_sec_sec_intervention_getLog)
+vmod_sec_intervention_getLog(VRT_CTX,
+    struct vmod_sec_sec *vp, struct vmod_priv *priv){
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    CHECK_OBJ_NOTNULL(ctx->req, REQ_MAGIC);
+    AN(ctx->vsl);
+
+    if (priv->priv == NULL)
+    {
+        VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        return "";
+    }
+    struct vmod_sec_trans_int* transInt = (struct vmod_sec_trans_int *)priv->priv;
+    return transInt->intervention.log;
 }

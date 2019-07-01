@@ -13,6 +13,7 @@
 vcl 4.0;
 import sec;
 import std;
+import vtc;
 
 # Default backend definition. Set this to point to your content server.
 backend default {
@@ -52,15 +53,44 @@ sub vcl_init {
 	modsec.add_rules("/usr/share/modsecurity-crs/rules/RESPONSE-954-DATA-LEAKAGES-IIS.conf");
 	modsec.add_rules("/usr/share/modsecurity-crs/rules/RESPONSE-959-BLOCKING-EVALUATION.conf");
 	modsec.add_rules("/usr/share/modsecurity-crs/rules/RESPONSE-980-CORRELATION.conf");
+	modsec.add_rules("https://www.modsecurity.org/modsecurity-regression-test-secremoterules.txt", "test");
+	modsec.add_rule({"SecRule TX:EXECUTING_PARANOIA_LEVEL "@lt 2" "id:950013332,phase:3,pass,nolog,skipAfter:END-RESPONSE-950-DATA-LEAKAGES"});
 	modsec.dump_rules();
 }
 
-sub vcl_recv {
-    std.cache_req_body(500KB);
-    modsec.new_conn(client.ip, std.port(client.ip), server.ip, std.port(server.ip));
-    modsec.process_url(req.url, req.method, regsub(req.proto, "^.*/", ""));
+sub handle_intervention {
+    if (modsec.intervention_getDisrupt()) {
+        std.log("Need to mess with ya");
+        vtc.sleep(modsec.intervention_getPause());
+	set req.http.X-intervention-status = modsec.intervention_getStatus();
+	set req.http.X-Intervention-Url = modsec.intervention_getUrl();
+	std.log(modsec.intervention_getLog());
+	if (req.http.X-intervention-status == "403") {
+		modsec.conn_close();
+	}
+	if (req.http.X-intervention-status ~ "^30.$") {
+		return (synth(900, "Intervention"));
+	}
+    }
+}
 
-    modsec.do_process_request_body();
+sub vcl_synth {
+    if (resp.status == 900) {
+      set resp.http.location = req.http.X-intervention-status;
+      set resp.status = std.integer(req.http.X-intervention-status, 302);
+      return(deliver);
+    }
+}
+
+sub vcl_recv {
+    modsec.new_conn(client.ip, std.port(client.ip), server.ip, std.port(server.ip));
+    call handle_intervention;
+    modsec.process_url(req.url, req.method, regsub(req.proto, "^.*/", ""));
+    call handle_intervention;
+    std.cache_req_body(500KB);
+    modsec.do_process_request_body(true);
+    call handle_intervention;
+#    modsec.conn_reset();
 
     # Happens before we check if we have this in cache already.
     #
@@ -81,5 +111,9 @@ sub vcl_deliver {
     #
     # You can do accounting or modifying the final object here.
     modsec.process_response();
-    modsec.do_process_response_body();
+    call handle_intervention;
+    modsec.do_process_response_body(false);
+    call handle_intervention;
 }
+
+
