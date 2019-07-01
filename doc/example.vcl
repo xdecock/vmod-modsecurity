@@ -22,9 +22,9 @@ backend default {
 }
 
 sub vcl_init {
-        new modsec = sec.sec();
-        modsec.add_rules("/usr/share/modsecurity-crs/crs-setup.conf");
-        modsec.add_rules("/usr/share/modsecurity-crs/rules/REQUEST-901-INITIALIZATION.conf");
+	new modsec = sec.sec();
+	modsec.add_rules("/usr/share/modsecurity-crs/crs-setup.conf");
+	modsec.add_rules("/usr/share/modsecurity-crs/rules/REQUEST-901-INITIALIZATION.conf");
 	modsec.add_rules("/usr/share/modsecurity-crs/rules/REQUEST-903.9001-DRUPAL-EXCLUSION-RULES.conf");
 	modsec.add_rules("/usr/share/modsecurity-crs/rules/REQUEST-903.9002-WORDPRESS-EXCLUSION-RULES.conf");
 	modsec.add_rules("/usr/share/modsecurity-crs/rules/REQUEST-903.9003-NEXTCLOUD-EXCLUSION-RULES.conf");
@@ -60,7 +60,7 @@ sub vcl_init {
 
 sub handle_intervention {
     if (modsec.intervention_getDisrupt()) {
-        std.log("Need to mess with ya");
+        std.syslog(9, "Need to mess with ya");
         vtc.sleep(modsec.intervention_getPause());
 	set req.http.X-intervention-status = modsec.intervention_getStatus();
 	set req.http.X-Intervention-Url = modsec.intervention_getUrl();

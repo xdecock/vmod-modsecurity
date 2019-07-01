@@ -13,42 +13,113 @@ Example
     ::
 
         import sec;
-
-        sub vcl_deliver {
-	    set resp.http.Hello = sec.hello();
+        import std;
+        sub vcl_init {
+            new modsec = sec.sec();
+            /* Configure mod security */
+            modsec.add_rules("/usr/share/modsecurity-crs/crs-setup.conf");
+            /* Add a local rules file */
+            modsec.add_rules("/usr/share/modsecurity-crs/rules/REQUEST-901-INITIALIZATION.conf");
+            /* Add a remote rules file */
+            modsec.add_rules("https://www.modsecurity.org/modsecurity-regression-test-secremoterules.txt", "test");
+            /* Add an inline rule */
+            modsec.add_rule({"SecRule TX:EXECUTING_PARANOIA_LEVEL "@lt 2" "id:950013332,phase:3,pass,nolog,skipAfter:END-RESPONSE-950-DATA-LEAKAGES"});
+            /* Allows to dump rules to stdout */
+            # modsec.dump_rules();
         }
 
-XXX: define vmod-sec interface
+        sub handle_intervention {
+            if (modsec.intervention_getDisrupt()) {
+                std.syslog(9, "Need to mess with ya");
+                std.syslog("Need to sleep " + modsec.intervention_getPause());
+                set req.http.X-intervention-status = modsec.intervention_getStatus();
+                set req.http.X-Intervention-Url = modsec.intervention_getUrl();
+                std.log(modsec.intervention_getLog());
+                if (req.http.X-intervention-status == "403") {
+                    modsec.conn_close();
+                }
+                if (req.http.X-intervention-status ~ "^30.$") {
+                    return (synth(900, "Intervention"));
+                }
+            }
+        }
+
+        sub vcl_synth {
+            if (resp.status == 900) {
+            set resp.http.location = req.http.X-intervention-status;
+            set resp.status = std.integer(req.http.X-intervention-status, 302);
+            return(deliver);
+            }
+        }
+
+        sub vcl_recv {
+            modsec.new_conn(client.ip, std.port(client.ip), server.ip, std.port(server.ip));
+            call handle_intervention;
+            modsec.process_url(req.url, req.method, regsub(req.proto, "^.*/", ""));
+            call handle_intervention;
+            std.cache_req_body(500KB);
+            modsec.do_process_request_body(true);
+            call handle_intervention;
+        }
+
+        sub vcl_deliver {
+            modsec.process_response();
+            call handle_intervention;
+            modsec.do_process_response_body(false);
+            call handle_intervention;
+        }
 
 $Event event_function
 
 $Object sec()
+This object will store rules, the per transaction object is linked to the top_request
 
 $Method INT .add_rule(STRING rules_string)
+This will add a rule to the rule set, should follow the modsecurity syntax
 
 $Method INT .add_rules(STRING rules_path, [STRING key])
+This will add a rules file, should follow the modsecurity syntax too, if key is provided, the rules file is considered remote
 
 $Method INT .dump_rules()
+This will dump rules to stdout
 
 $Method INT .new_conn(PRIV_TOP, STRING client_ip, INT client_port, STRING server_ip, INT server_port, [STRING transaction_id])
+Handles a new connection, requires client and server ip and port
+You can optionaly provide a transaction_id
 
 $Method INT .process_url(PRIV_TOP, STRING req_url, STRING protocol, STRING http_version)
+Process the url, method and http version
 
 #require body buffered TODO, implement as stream buffer
 $Method INT .do_process_request_body(PRIV_TOP, BOOL capture_body = 1)
+This mark the request body as "to be processed, otherwise just skip the record, 
+This needs std.cache_req_body(500KB) to be set
 
 $Method INT .process_response(PRIV_TOP, STRING protocol="HTTP 1.1")
+This handles response headers / status code etc etc
 
 # TODO implement as VFP
 $Method INT .do_process_response_body(PRIV_TOP, BOOL capture_body = 1)
+This will handle the response body
 
+# Kill the current connection
 $Method INT .conn_close(PRIV_TOP)
 
+#Intervention reading
 $Method BOOL .intervention_getDisrupt(PRIV_TOP)
+Get disrupt field from ModSecurityIntervention
+
 $Method INT .intervention_getStatus(PRIV_TOP)
+Get status field from ModSecurityIntervention
+
 $Method STRING .intervention_getUrl(PRIV_TOP)
+Get url field from ModSecurityIntervention if there's a redirection
+
 $Method DURATION .intervention_getPause(PRIV_TOP)
+Get pause field from ModSecurityIntervention, allows to delay response
+
 $Method STRING .intervention_getLog(PRIV_TOP)
+Get the log entry linked to the current ModSecurityIntervention
 
 
 SEE ALSO
