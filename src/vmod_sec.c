@@ -696,3 +696,8 @@ VCL_STRING v_matchproto_(td_sec_sec_intervention_getLog)
     struct vmod_sec_trans_int *transInt = (struct vmod_sec_trans_int *)priv->priv;
     return transInt->intervention.log;
 }
+
+VCL_STRING v_matchproto_(td_sec_sec_version)
+    vmod_sec_version(VRT_CTX, struct vmod_sec_sec *vp){
+        return MODSECURITY_VERSION;
+    }

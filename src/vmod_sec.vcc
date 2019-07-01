@@ -124,6 +124,8 @@ Get pause field from ModSecurityIntervention, allows to delay response
 $Method STRING .intervention_getLog(PRIV_TOP)
 Get the log entry linked to the current ModSecurityIntervention
 
+$Method STRING .version()
+Get the libvmodSecurity version
 
 SEE ALSO
 ========

@@ -1,0 +1,25 @@
+varnishtest "Check if we got the version string"
+
+server s1 {
+	rxreq
+	txresp
+} -start
+
+varnish v1 -vcl+backend {
+        import sec;
+
+		sub vcl_init {
+			new xsec = sec.sec();
+            
+		}
+        sub vcl_deliver {
+	        set resp.http.X-ModSec-RulesCouns = xsec.add_rules("https://www.modsecurity.org/modsecurity-regression-test-secremoterules.txt", "test");
+        }
+} -start
+
+client c1 {
+	txreq
+	rxresp
+	expect resp.status == 200
+	expect resp.http.X-ModSec-RulesCouns ~ ^[0-9]+$
+} -run

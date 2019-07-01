@@ -25,7 +25,8 @@ AM_VTC_LOG_FLAGS = \
 	-p vmod_path="$(abs_builddir)/.libs:$(vmoddir):$(VARNISHAPI_VMODDIR)"
 
 TESTS = \
-	vtc/vmod_sec.vtc
+	vtc/vmod_sec_version.vtc \
+	vtc/vmod_sec_load_remote_rule.vtc
 
 # Documentation
 
