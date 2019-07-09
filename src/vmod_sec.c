@@ -72,7 +72,7 @@ void vmod_modsec_free(void *vmod_priv)
 /*
  * Called when the vmod is loaded
  */
-int event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event)
+int vmod_event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event)
 {
     return (0);
     ASSERT_CLI();
@@ -204,7 +204,7 @@ VCL_INT v_matchproto_(td_sec_sec_add_rule)
  */
 VCL_INT v_matchproto_(td_sec_sec_add_rules)
     vmod_sec_add_rules(VRT_CTX, struct vmod_sec_sec *vp,
-                       struct vmod_sec_add_rules_arg *args)
+                       struct VARGS(sec_add_rules) *args)
 {
     Rules *rules_set;
     int ret;
@@ -273,7 +273,7 @@ void v_matchproto_(vmod_priv_free_f)
  */
 VCL_INT v_matchproto_(td_sec_sec_new_conn)
     vmod_sec_new_conn(VRT_CTX, struct vmod_sec_sec *vp,
-                      struct vmod_sec_new_conn_arg *args)
+                      struct VARGS(sec_new_conn) *args)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     struct vmod_sec_trans_int *transInt;
@@ -386,7 +386,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
 
 /* Iterate over the object (to read body) */
 static int v_matchproto_(objiterate_f)
-    vmod_sec_read_request_body(void *priv, int flush, const void *ptr, ssize_t len)
+    vmod_sec_read_request_body(void *priv, unsigned int flush, const void *ptr, ssize_t len)
 {
 
     AN(priv);
@@ -512,7 +512,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
  * Iterate over object to treat the response body
  */
 static int v_matchproto_(objiterate_f)
-    vmod_sec_read_response_body(void *priv, int flush, const void *ptr, ssize_t len)
+    vmod_sec_read_response_body(void *priv, unsigned int flush, const void *ptr, ssize_t len)
 {
 
     AN(priv);
