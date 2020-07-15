@@ -1,0 +1,21 @@
+Source: vmod-modsecurity
+Priority: optional
+Maintainer: De Cock Xavier <xdecock@gmail.com>
+Build-Depends:
+ debhelper (>= 9),
+ libvarnishapi-dev (>= 6.4.0) |
+ varnish-dev (>= 6.4.0),
+ pkg-config (>= 0.21),
+ python3-docutils,
+ varnish (>= 6.4.0),
+ libmodsecurity-dev,
+Standards-Version: 3.9.5
+Section: libs
+Homepage: https://github.com/xdecock/vmod-modsecurity
+
+Package: vmod-modsecurity
+Architecture: any
+Depends:
+ varnish (>= 6.4.0),
+ libmodsecurity3,
+Description: modsecurity binding for varnish
