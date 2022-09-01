@@ -42,9 +42,9 @@ struct vmod_sec_struct_trans_int {
 };
 
 static enum vfp_status v_matchproto_(vfp_init_f)
-    vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent);
+    vfp_modsec_init(VRT_CTX, struct vfp_ctx *vfp_context, struct vfp_entry *ent);
 static void v_matchproto_(vfp_fini_f)
-    vfp_modsec_fini(struct vfp_ctx *ctx, struct vfp_entry *ent);
+    vfp_modsec_fini(struct vfp_ctx *vfp_context, struct vfp_entry *ent);
 static enum vfp_status v_matchproto_(vfp_pull_f)
     vfp_modsec_pull(struct vfp_ctx *ctx, struct vfp_entry *ent, void *ptr,
                     ssize_t *lenp);
@@ -63,7 +63,8 @@ void vmod_sec_log_callback(void *ref, const void *message)
  * Frees the 
 vmod_sec_sec structure 
  */
-void vmod_modsec_free(void *vmod_priv)
+void v_matchproto_(vmod_priv_fini_f)
+    vmod_modsec_vfp_priv_fini(VRT_CTX, void *vmod_priv)
 {
     free((void *)((struct vfp *)vmod_priv)->name);
     free(vmod_priv);
@@ -79,6 +80,11 @@ int vmod_event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event)
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     AN(priv);
     struct vfp *vfp_modsec;
+    static const struct vmod_priv_methods vmod_modsec_vfp_methods[1] = {{
+            .magic = VMOD_PRIV_METHODS_MAGIC,
+            .type = "vmod_modsec_vfp_priv_fini",
+            .fini = vmod_modsec_vfp_priv_fini
+        }};
 
     switch (event)
     {
@@ -86,7 +92,7 @@ int vmod_event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event)
     case VCL_EVENT_WARM:
         /* Registers a varnish fetch processor */
         /* @todo implement the logic */
-        // Freed throug vmod_modsec_free
+        // Freed throug vmod_modsec_vfp_priv_fini
         vfp_modsec = malloc(sizeof(struct vfp));
         vfp_modsec->name = malloc(sizeof("modsec"));
         vfp_modsec->name = "modsec";
@@ -95,7 +101,7 @@ int vmod_event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event)
         vfp_modsec->fini = vfp_modsec_fini;
         vfp_modsec->priv1 = priv;
         priv->priv = vfp_modsec;
-        priv->free = vmod_modsec_free;
+        priv->methods = vmod_modsec_vfp_methods;
         VRT_AddVFP(ctx, vfp_modsec);
         return (0);
 
@@ -254,8 +260,8 @@ VCL_INT v_matchproto_(td_sec_sec_dump_rules)
 /*
  * free the transaction
  */
-void v_matchproto_(vmod_priv_free_f)
-    vmod_sec_cleanup_transaction(void *ptr)
+void v_matchproto_(vmod_priv_fini_f)
+    vmod_sec_cleanup_transaction(VRT_CTX, void *ptr)
 {
     struct vmod_sec_struct_trans_int *transInt;
     transInt = (struct vmod_sec_struct_trans_int *)ptr;
@@ -278,6 +284,11 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
     struct vmod_sec_struct_trans_int *transInt;
     if (args->arg1->priv == NULL)
     {
+        static const struct vmod_priv_methods vmod_sec_free_tx_methods[1] = {{
+            .magic = VMOD_PRIV_METHODS_MAGIC,
+            .type = "vmod_sec_cleanup_transaction",
+            .fini = vmod_sec_cleanup_transaction
+        }};
         /* Freed by varnish on "end of use by calling vmod_sec_cleanup_transaction" */
         transInt = malloc(sizeof(struct vmod_sec_struct_trans_int));
 
@@ -303,7 +314,7 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
                 vp->modsec, vp->rules_set, args->arg1);
         }
         args->arg1->priv = transInt;
-        args->arg1->free = vmod_sec_cleanup_transaction;
+        args->arg1->methods = vmod_sec_free_tx_methods;
     }
     msc_process_connection(transInt->trans,
                            args->client_ip, args->client_port,
@@ -566,20 +577,20 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
 
 /* Initialize the Varnish Fetch Processor */
 static enum vfp_status v_matchproto_(vfp_init_f)
-    vfp_modsec_init(struct vfp_ctx *ctx, struct vfp_entry *ent)
+    vfp_modsec_init(VRT_CTX, struct vfp_ctx *vfp_context, struct vfp_entry *ent)
 {
     return (VFP_OK);
 }
 
 /* Closes the Varnish Fetch Processor */
 static void v_matchproto_(vfp_fini_f)
-    vfp_modsec_fini(struct vfp_ctx *ctx, struct vfp_entry *ent)
+    vfp_modsec_fini(struct vfp_ctx *vfp_context, struct vfp_entry *ent)
 {
 }
 
 /* Varnish Fetch Processor Main loop */
 static enum vfp_status v_matchproto_(vfp_pull_f)
-    vfp_modsec_pull(struct vfp_ctx *ctx, struct vfp_entry *ent, void *ptr,
+    vfp_modsec_pull(struct vfp_ctx *vfp_context, struct vfp_entry *ent, void *ptr,
                     ssize_t *lenp)
 {
     return (VFP_OK);
