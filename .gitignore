@@ -52,3 +52,5 @@ debian/.debhelper
 debian/vmod-modsecurity
 debian/*substvars
 debian/files
+
+*~
