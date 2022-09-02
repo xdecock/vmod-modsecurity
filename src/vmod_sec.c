@@ -183,31 +183,18 @@ VCL_INT v_matchproto_(td_sec_sec_add_rule)
     vmod_sec_add_rule(VRT_CTX, struct VPFX(sec_sec) *vp,
                       VCL_STRING rule)
 {
-    Rules *rules_set;
     int ret;
     const char *error = NULL;
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - VCL provided rule", rule);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
-    rules_set = msc_create_rules_set();
-    ret = msc_rules_add(rules_set, rule, &error);
+    ret = msc_rules_add(vp->rules_set, rule, &error);
     if (ret < 0)
     {
-        msc_rules_cleanup(rules_set); // Avoid memleak
         VSL(SLT_Error, 0, "[vmodsec] - Problems loading the VCL provided rule --\n");
         VSL(SLT_Error, 0, "%s\n", error);
         return -1;
     }
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the VCL provided rule", rule);
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merging rules in main rule set", rule);
-    ret = msc_rules_merge(vp->rules_set, rules_set, &error);
-    msc_rules_cleanup(rules_set); // Avoid memleak
-    if (ret < 0)
-    {
-        VSL(SLT_Error, 0, "[vmodsec] - Problems merging the VCL provided rule --\n");
-        VSL(SLT_Error, 0, "%s\n", error);
-        return -1;
-    }
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merged VCL provided rule", rule);
     return 0;
 }
 
@@ -218,39 +205,26 @@ VCL_INT v_matchproto_(td_sec_sec_add_rule)
 VCL_INT v_matchproto_(td_sec_sec_add_rules)
     vmod_sec_add_rules(VRT_CTX, struct VPFX(sec_sec) *vp, struct VARGS(sec_add_rules) *args)
 {
-    Rules *rules_set;
     int ret;
     const char *error = NULL;
 
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Try to load the rules", args->rules_path);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
-    rules_set = msc_create_rules_set();
     if (args->valid_key)
     {
-        ret = msc_rules_add_remote(rules_set, args->key, args->rules_path, &error);
+        ret = msc_rules_add_remote(vp->rules_set, args->key, args->rules_path, &error);
     }
     else
     {
-        ret = msc_rules_add_file(rules_set, args->rules_path, &error);
+        ret = msc_rules_add_file(vp->rules_set, args->rules_path, &error);
     }
     if (ret < 0)
     {
-        msc_rules_cleanup(rules_set); // Avoid memleak
         VSL(SLT_Error, 0, "[vmodsec] - Problems loading the rules --\n");
         VSL(SLT_Error, 0, "%s\n", error);
         return -1;
     }
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the rules", args->rules_path);
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merging rules in main rule set", args->rules_path);
-    ret = msc_rules_merge(vp->rules_set, rules_set, &error);
-    msc_rules_cleanup(rules_set); // Avoid memleak
-    if (ret < 0)
-    {
-        VSL(SLT_Error, 0, "[vmodsec] - Problems merging the rules --\n");
-        VSL(SLT_Error, 0, "%s\n", error);
-        return -1;
-    }
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Merged rules", args->rules_path);
     return 0;
 }
 
