@@ -31,7 +31,7 @@ struct VPFX(sec_sec)
     unsigned magic; // same magic as vmod obj | below
 #define VMOD_SEC_SEC_MAGIC_BITS 0x07a91234
     ModSecurity *modsec;
-    Rules *rules_set;
+    RulesSet *rules_set;
 };
 
 /* Not yet implemented */
@@ -132,7 +132,7 @@ VCL_VOID v_matchproto_(td_sec_sec__init)
 {
     struct VPFX(sec_sec) *vp;
     ModSecurity *modsec;
-    Rules *rules_set;
+    RulesSet *rules_set;
     int error;
     (void)vcl_name;
 
