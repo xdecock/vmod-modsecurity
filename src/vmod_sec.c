@@ -269,14 +269,20 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
                       struct VARGS(sec_new_conn) *args)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
+
+    struct vmod_priv *p;
+    if (args->arg1 == NULL) {
+        return 0;
+    }
+    p = args->arg1;
+    
     struct vmod_sec_struct_trans_int *transInt;
-    if (args->arg1->priv == NULL)
+    if (p->priv == NULL)
     {
-        static const struct vmod_priv_methods vmod_sec_free_tx_methods[1] = {{
-            .magic = VMOD_PRIV_METHODS_MAGIC,
-            .type = "vmod_sec_cleanup_transaction",
-            .fini = vmod_sec_cleanup_transaction
-        }};
+        VSL(SLT_Debug, ctx->sp->vxid,
+            "[vmodsec] - new conn for [%s:%ld] with server [%s:%ld]",
+            args->client_ip, args->client_port, args->server_ip, args->server_port);
         /* Freed by varnish on "end of use by calling vmod_sec_cleanup_transaction" */
         transInt = malloc(sizeof(struct vmod_sec_struct_trans_int));
 
@@ -293,13 +299,13 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
             char *transaction_id = malloc(strlen(args->transaction_id));
             strcpy(transaction_id, args->transaction_id);
             transInt->trans = msc_new_transaction_with_id(
-                vp->modsec, vp->rules_set, transaction_id, args->arg1);
+                vp->modsec, vp->rules_set, transaction_id, p);
             free(transaction_id);
         }
         else
         {
             transInt->trans = msc_new_transaction(
-                vp->modsec, vp->rules_set, args->arg1);
+                vp->modsec, vp->rules_set, p);
         }
         p->priv = transInt;
         p->methods = vmod_sec_free_tx_methods;
@@ -421,7 +427,7 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
         return -1;
     }
     struct vmod_sec_struct_trans_int *transInt = (struct vmod_sec_struct_trans_int *)priv->priv;
-    VSL(SLT_Debug, 0, "[vmodsec] - Reading request body ? %d", capture_body);
+    VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Reading request body ? %d", capture_body);
     if (capture_body == 1)
     {
         const struct http *hp = ctx->req->http;
