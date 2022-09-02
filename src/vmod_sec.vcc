@@ -105,6 +105,9 @@ This handles response headers / status code etc etc
 $Method INT .do_process_response_body(PRIV_TOP, BOOL capture_body = 1)
 This will handle the response body
 
+$Method INT .update_status_code(PRIV_TOP, INT status_code)
+This receives the response status code
+
 # Kill the current connection
 $Method INT .conn_close(PRIV_TOP)
 

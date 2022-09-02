@@ -1,7 +1,14 @@
 #include "config.h"
 
-#include "modsecurity/modsecurity.h"
-#include "modsecurity/rules.h"
+#include <modsecurity/modsecurity.h>
+#ifndef MODSECURITY_CHECK_VERSION
+#include <modsecurity/rules.h>
+typedef struct Rules_t RulesSet;
+#else
+#include <modsecurity/rules_set.h>
+#endif
+#include <modsecurity/transaction.h>
+
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -571,8 +578,24 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
     }
     msc_process_response_body(transInt->trans);
-    process_intervention(transInt);
-    return 0;
+}
+
+/*
+ * Process the response header
+ */
+VCL_INT v_matchproto_(td_sec_sec_status_code)
+    vmod_sec_update_status_code(VRT_CTX,
+                              struct VPFX(sec_sec) *vp, struct vmod_priv *priv, VCL_INT status_code)
+{
+    CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
+    if (priv->priv == NULL)
+    {
+        VSL(SLT_Error, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
+        return -1;
+    }
+    struct vmod_sec_struct_trans_int *transInt = (struct vmod_sec_struct_trans_int *)priv->priv;
+    msc_update_status_code(transInt->trans, status_code);
+    return process_intervention(transInt);
 }
 
 /* Initialize the Varnish Fetch Processor */
