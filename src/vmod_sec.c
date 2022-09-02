@@ -597,6 +597,9 @@ static enum vfp_status v_matchproto_(vfp_pull_f)
 static int process_intervention(struct vmod_sec_struct_trans_int *transInt)
 {
     int z = msc_intervention(transInt->trans, &transInt->intervention);
+    if (z != 0) {
+        VSL(SLT_Debug, 0, "[vmodsec] - INTERVENTION [%d]", z);
+    }
     return z;
 }
 
