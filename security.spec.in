@@ -13,7 +13,7 @@ License:	BSD-3-Clause: https://opensource.org/licenses/BSD-3-Clause
 URL:		https://github.com/xdecock/vmod-modsecurity
 Source:		%{name}-%{version}.tar.gz
 
-BuildRequires:	pkgconfig(varnishapi) >= 6.0.0
+BuildRequires:	pkgconfig(varnishapi) >= 7.0.0
 
 %description
 ModSecurity: Provides way to configure and interface with modsecurity
