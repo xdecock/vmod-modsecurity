@@ -294,8 +294,8 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
             transInt->trans = msc_new_transaction(
                 vp->modsec, vp->rules_set, args->arg1);
         }
-        args->arg1->priv = transInt;
-        args->arg1->methods = vmod_sec_free_tx_methods;
+    } else {
+        transInt = p->priv;
     }
     msc_process_connection(transInt->trans,
                            args->client_ip, args->client_port,
