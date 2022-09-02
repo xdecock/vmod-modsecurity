@@ -77,6 +77,12 @@ void v_matchproto_(vmod_priv_fini_f)
     free(vmod_priv);
 }
 
+static const struct vmod_priv_methods vmod_modsec_vfp_methods[1] = {{
+        .magic = VMOD_PRIV_METHODS_MAGIC,
+        .type = "vmod_modsec_vfp_priv_fini",
+        .fini = vmod_modsec_vfp_priv_fini
+    }};
+
 /*
  * Called when the vmod is loaded
  */
@@ -87,11 +93,6 @@ int vmod_event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e event)
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     AN(priv);
     struct vfp *vfp_modsec;
-    static const struct vmod_priv_methods vmod_modsec_vfp_methods[1] = {{
-            .magic = VMOD_PRIV_METHODS_MAGIC,
-            .type = "vmod_modsec_vfp_priv_fini",
-            .fini = vmod_modsec_vfp_priv_fini
-        }};
 
     switch (event)
     {
@@ -253,6 +254,12 @@ void v_matchproto_(vmod_priv_fini_f)
     free(transInt);
 }
 
+static const struct vmod_priv_methods vmod_sec_free_tx_methods[1] = {{
+    .magic = VMOD_PRIV_METHODS_MAGIC,
+    .type = "vmod_sec_cleanup_transaction",
+    .fini = vmod_sec_cleanup_transaction
+}};
+
 /*
  * Create a transaction, assign a connection, and eat the headers
  * @todo limit to vcl_recv?
@@ -294,6 +301,8 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
             transInt->trans = msc_new_transaction(
                 vp->modsec, vp->rules_set, args->arg1);
         }
+        p->priv = transInt;
+        p->methods = vmod_sec_free_tx_methods;
     } else {
         transInt = p->priv;
     }
