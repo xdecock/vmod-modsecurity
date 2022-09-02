@@ -313,8 +313,7 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
         "[vmodsec] - Started processing Transaction for [%s:%ld] with server [%s:%ld]",
         args->client_ip, args->client_port, args->server_ip, args->server_port);
 
-    process_intervention(transInt);
-    return 0;
+    return process_intervention(transInt);
 }
 
 /*
@@ -338,7 +337,12 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
     VSL(SLT_Debug, ctx->sp->vxid,
         "[vmodsec] - Processing URI : [%s] on protocol [%s] with version [%s]",
         req_url, protocol, http_version);
-    process_intervention(transInt);
+    int interventionResult = process_intervention(transInt);
+    if (interventionResult != 0) {
+        VSL(SLT_Error, ctx->sp->vxid,
+            "[vmodsec] - INTERVENE [%d]", interventionResult);
+        return interventionResult;
+    }
 
     /* Handling headers */
     unsigned u;
@@ -380,8 +384,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Headers");
 #endif
     msc_process_request_headers(transInt->trans);
-    process_intervention(transInt);
-    return (0);
+    return process_intervention(transInt);
 }
 
 /* Iterate over the object (to read body) */
@@ -446,8 +449,7 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
     }
 
     msc_process_request_body(transInt->trans);
-    process_intervention(transInt);
-    return 0;
+    return process_intervention(transInt);
 }
 
 /*
@@ -504,8 +506,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
     free(headerName);
     free(headerValue);
     msc_process_response_headers(transInt->trans, ctx->req->resp->status, protocol);
-    process_intervention(transInt);
-    return 0;
+    return process_intervention(transInt);
 }
 
 /*
@@ -561,6 +562,7 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
     }
     msc_process_response_body(transInt->trans);
+    return process_intervention(transInt);
 }
 
 /*
