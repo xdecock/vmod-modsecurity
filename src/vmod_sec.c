@@ -639,7 +639,7 @@ VCL_BOOL v_matchproto_(td_sec_sec_intervention_getDisrupt)
         return -1;
     }
     struct vmod_sec_struct_trans_int *transInt = (struct vmod_sec_struct_trans_int *)priv->priv;
-    return transInt->intervention.disruptive;
+    return transInt->intervention.disruptive != 0;
 }
 
 /* This will return the http status code modsecurity wants to run */
