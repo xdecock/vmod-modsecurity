@@ -509,12 +509,14 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers",
         hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
 #endif
+    int headerCount = hp->nhd - HTTP_HDR_FIRST;
     // freed after loop
-    char *headerName = malloc(8192);
-    char *headerValue = malloc(8192);
+    char **headersNames = (char **)malloc(sizeof(char *) * headerCount);
+    char **headersValues = (char **)malloc(sizeof(char *) * headerCount);;
 
     for (u = HTTP_HDR_FIRST; u < hp->nhd; u++)
     {
+        int headerPos = u-HTTP_HDR_FIRST;
         Tcheck(hp->hd[u]);
         const char *header = hp->hd[u].b;
         long int hlen = strlen(header);
@@ -525,21 +527,27 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
             continue;
         }
         /* Copy headers */
-        strncpy(headerName, header, pos);
-        headerName[pos] = '\0';
+        headersNames[headerPos] = malloc(pos+1);
+        strncpy(headersNames[headerPos], header, pos);
+        headersNames[headerPos][pos] = '\0';
         // Find spaces
         pos += 1 /* : */ + strspn(&header[pos + 1], " \r\n\t"); // LWS = [CRLF] 1*( SP | HT ) chr(9,10,13,32)
-        strncpy(headerValue, &header[pos], hlen - pos);
-        headerValue[hlen - pos] = '\0';
-        msc_add_response_header(transInt->trans, headerName, headerValue);
+        headersValues[headerPos] = (char *)malloc(hlen - pos +1);
+        strncpy(headersValues[headerPos], &header[pos], hlen - pos);
+        headersValues[headerPos][hlen - pos] = '\0';
+        msc_add_response_header(transInt->trans, headersNames[headerPos], headersValues[headerPos]);
 #ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s: %s",
-            headerName, headerValue);
+            headersNames[headerPos], headersValues[headerPos]);
 #endif
     }
-    free(headerName);
-    free(headerValue);
     msc_process_response_headers(transInt->trans, ctx->req->resp->status, protocol);
+    for (u = 0; u<headerCount; ++u) {
+        free(headersNames[u]);
+        free(headersValues[u]);
+    }
+    free(headersNames);
+    free(headersValues);
     return process_intervention(transInt);
 }
 
