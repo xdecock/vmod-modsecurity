@@ -371,7 +371,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
 
     /* Handling headers */
     unsigned u;
-    const struct http *hp = ctx->http_resp;
+    const struct http *hp = ctx->http_req;
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers", hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
 #endif
@@ -503,7 +503,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
 
     /* Handling headers */
     unsigned u;
-    const struct http *hp = ctx->req->resp;
+    const struct http *hp = ctx->http_resp;
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Headers");
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers",
