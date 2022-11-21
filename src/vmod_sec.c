@@ -604,7 +604,8 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
             VSL(SLT_Error, ctx->sp->vxid,
                 "[vmodsec] - Iteration on resp.body didn't succeed. %d", ret);
 
-            return -1;
+            msc_process_response_body(transInt->trans);
+            return process_intervention(transInt);
         }
 
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");
