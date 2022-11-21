@@ -459,6 +459,11 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
     if (capture_body == 1)
     {
         const struct http *hp = ctx->req->http;
+        if (ctx->req->req_body_status == BS_NONE)
+        {
+            msc_process_request_body(transInt->trans);
+            return process_intervention(transInt);
+        }
         if (ctx->req->req_body_status != BS_CACHED)
         {
             VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Unbuffered req.body");
@@ -764,3 +769,8 @@ VCL_STRING v_matchproto_(td_sec_sec_version)
     vmod_sec_version(VRT_CTX, struct VPFX(sec_sec) *vp){
         return MODSECURITY_VERSION;
     }
+
+
+// Handle Varnish requests on stream
+
+// VRT_AddFilter(ctx, &td_sec_vfp_modsec, &td_sec_vdp_modsec);
