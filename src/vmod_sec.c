@@ -9,8 +9,6 @@ typedef struct Rules_t RulesSet;
 #endif
 #include <modsecurity/transaction.h>
 
-#define VMOD_SEC_DEBUG 1
-
 #include <sys/socket.h>
 #include <unistd.h>
 #include <string.h>
