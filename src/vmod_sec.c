@@ -135,7 +135,6 @@ VCL_VOID v_matchproto_(td_sec_sec__init)
     int error;
     (void)vcl_name;
 
-
     if (ctx->method != VCL_MET_INIT) {
         VRT_fail(ctx, "[vmodsec] - init can only be called from vcl_init{}");
     }
@@ -769,8 +768,3 @@ VCL_STRING v_matchproto_(td_sec_sec_version)
     vmod_sec_version(VRT_CTX, struct VPFX(sec_sec) *vp){
         return MODSECURITY_VERSION;
     }
-
-
-// Handle Varnish requests on stream
-
-// VRT_AddFilter(ctx, &td_sec_vfp_modsec, &td_sec_vdp_modsec);
