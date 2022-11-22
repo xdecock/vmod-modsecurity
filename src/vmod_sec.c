@@ -9,7 +9,6 @@ typedef struct Rules_t RulesSet;
 #endif
 #include <modsecurity/transaction.h>
 
-
 #include <sys/socket.h>
 #include <unistd.h>
 #include <string.h>
@@ -136,12 +135,15 @@ VCL_VOID v_matchproto_(td_sec_sec__init)
     int error;
     (void)vcl_name;
 
+    if (ctx->method != VCL_MET_INIT) {
+        VRT_fail(ctx, "[vmodsec] - init can only be called from vcl_init{}");
+    }
     /* Sanity check */
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     AN(vpp);
     AZ(*vpp);
 
-    VSL(SLT_Error, 0, "[vmodsec] - object [%s] initialized using modsecurity %s",
+    VSL(SLT_Debug, 0, "[vmodsec] - object [%s] initialized using modsecurity %s",
         vcl_name, MODSECURITY_VERSION);
 
     modsec = msc_init();
@@ -188,6 +190,11 @@ VCL_INT v_matchproto_(td_sec_sec_add_rule)
     const char *error = NULL;
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - VCL provided rule", rule);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
+
+    if (ctx->method != VCL_MET_INIT) {
+        VRT_fail(ctx, "[vmodsec] - .add_rule can only be called from vcl_init{}");
+    }
+
     ret = msc_rules_add(vp->rules_set, rule, &error);
     if (ret < 0)
     {
@@ -208,6 +215,10 @@ VCL_INT v_matchproto_(td_sec_sec_add_rules)
 {
     int ret;
     const char *error = NULL;
+    if (ctx->method != VCL_MET_INIT) {
+        VRT_fail(ctx, "[vmodsec] - .add_rules can only be called from vcl_init{}");
+    }
+
 
     VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Try to load the rules", args->rules_path);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
@@ -270,6 +281,10 @@ VCL_INT v_matchproto_(td_sec_sec_new_conn)
 {
     CHECK_OBJ_NOTNULL(ctx, VRT_CTX_MAGIC);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
+
+    if (ctx->method != VCL_MET_RECV) {
+        VRT_fail(ctx, "[vmodsec] - new_conn can only be called from vcl_recv{}");
+    }
 
     struct vmod_priv *p;
     if (args->arg1 == NULL) {
@@ -337,6 +352,7 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
         VSL(SLT_Error, ctx->sp->vxid, "[vmodsec] - connection has not been started, closing");
         return -1;
     }
+
     struct vmod_sec_struct_trans_int *transInt = (struct vmod_sec_struct_trans_int *)priv->priv;
     /* This will be used to Initialise the original URL */
     msc_process_uri(transInt->trans, req_url, protocol, http_version);
@@ -352,16 +368,17 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
 
     /* Handling headers */
     unsigned u;
-    const struct http *hp = ctx->req->http;
+    const struct http *hp = ctx->http_req;
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers", hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
 #endif
-    // Freed after loop
-    char *headerName = malloc(8192);
-    char *headerValue = malloc(8192);
+    int headerCount = hp->nhd - HTTP_HDR_FIRST;
+    char **headersNames = (char **)malloc(sizeof(char *) * headerCount);
+    char **headersValues = (char **)malloc(sizeof(char *) * headerCount);
 
     for (u = HTTP_HDR_FIRST; u < hp->nhd; u++)
     {
+        int headerPos = u-HTTP_HDR_FIRST;
         Tcheck(hp->hd[u]);
         const char *header = hp->hd[u].b;
         long int hlen = strlen(header);
@@ -372,24 +389,32 @@ VCL_INT v_matchproto_(td_sec_sec_process_url)
             continue;
         }
         /* Copy headers */
-        strncpy(headerName, header, pos);
-        headerName[pos] = '\0';
+        headersNames[headerPos] = (char *)malloc(pos+1);
+        strncpy(headersNames[headerPos], header, pos);
+        headersNames[headerPos][pos] = '\0';
         // Find spaces
         pos += 1 /* : */ + strspn(&header[pos + 1], " \r\n\t"); // LWS = [CRLF] 1*( SP | HT ) chr(9,10,13,32)
-        strncpy(headerValue, &header[pos], hlen - pos);
-        headerValue[hlen - pos] = '\0';
-        msc_add_request_header(transInt->trans, headerName, headerValue);
+        // Copy value
+        headersValues[headerPos] = (char *)malloc(hlen - pos +1);
+        strncpy(headersValues[headerPos], &header[pos], hlen - pos);
+        headersValues[headerPos][hlen - pos] = '\0';
+        // FIXME : use msc_add_n_request_header
+        msc_add_request_header(transInt->trans, headersNames[headerPos], headersValues[headerPos]);
 #ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid,
-            "[vmodsec] - Additional header provided %s: %s", headerName, headerValue);
+            "[vmodsec] - Additional header provided %s: %s", headersNames[headerPos], headersValues[headerPos]);
 #endif
     }
-    free(headerName);
-    free(headerValue);
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Headers");
 #endif
     msc_process_request_headers(transInt->trans);
+    for (u = 0; u<headerCount; ++u) {
+        free(headersNames[u]);
+        free(headersValues[u]);
+    }
+    free(headersNames);
+    free(headersValues);
     return process_intervention(transInt);
 }
 
@@ -431,10 +456,16 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
     if (capture_body == 1)
     {
         const struct http *hp = ctx->req->http;
+        if (ctx->req->req_body_status == BS_NONE)
+        {
+            msc_process_request_body(transInt->trans);
+            return process_intervention(transInt);
+        }
         if (ctx->req->req_body_status != BS_CACHED)
         {
             VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Unbuffered req.body");
-            return -1;
+            msc_process_request_body(transInt->trans);
+            return process_intervention(transInt);
         }
 
         int ret;
@@ -447,8 +478,8 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_request_body)
         {
             VSL(SLT_Error, ctx->sp->vxid,
                 "[vmodsec] - Iteration on req.body didn't succeed. %d", ret);
-
-            return -1;
+            msc_process_request_body(transInt->trans);
+            return process_intervention(transInt);
         }
 
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Request Body");
@@ -475,18 +506,20 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
 
     /* Handling headers */
     unsigned u;
-    const struct http *hp = ctx->req->resp;
+    const struct http *hp = ctx->http_resp;
 #ifdef VMOD_SEC_DEBUG
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Headers");
     VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Found %d headers, Start at %d, need to ingest %d headers",
         hp->nhd, HTTP_HDR_FIRST, hp->nhd - HTTP_HDR_FIRST);
 #endif
+    int headerCount = hp->nhd - HTTP_HDR_FIRST;
     // freed after loop
-    char *headerName = malloc(8192);
-    char *headerValue = malloc(8192);
+    char **headersNames = (char **)malloc(sizeof(char *) * headerCount);
+    char **headersValues = (char **)malloc(sizeof(char *) * headerCount);;
 
     for (u = HTTP_HDR_FIRST; u < hp->nhd; u++)
     {
+        int headerPos = u-HTTP_HDR_FIRST;
         Tcheck(hp->hd[u]);
         const char *header = hp->hd[u].b;
         long int hlen = strlen(header);
@@ -497,21 +530,27 @@ VCL_INT v_matchproto_(td_sec_sec_process_response)
             continue;
         }
         /* Copy headers */
-        strncpy(headerName, header, pos);
-        headerName[pos] = '\0';
+        headersNames[headerPos] = malloc(pos+1);
+        strncpy(headersNames[headerPos], header, pos);
+        headersNames[headerPos][pos] = '\0';
         // Find spaces
         pos += 1 /* : */ + strspn(&header[pos + 1], " \r\n\t"); // LWS = [CRLF] 1*( SP | HT ) chr(9,10,13,32)
-        strncpy(headerValue, &header[pos], hlen - pos);
-        headerValue[hlen - pos] = '\0';
-        msc_add_response_header(transInt->trans, headerName, headerValue);
+        headersValues[headerPos] = (char *)malloc(hlen - pos +1);
+        strncpy(headersValues[headerPos], &header[pos], hlen - pos);
+        headersValues[headerPos][hlen - pos] = '\0';
+        msc_add_response_header(transInt->trans, headersNames[headerPos], headersValues[headerPos]);
 #ifdef VMOD_SEC_DEBUG
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Additional response header provided %s: %s",
-            headerName, headerValue);
+            headersNames[headerPos], headersValues[headerPos]);
 #endif
     }
-    free(headerName);
-    free(headerValue);
     msc_process_response_headers(transInt->trans, ctx->req->resp->status, protocol);
+    for (u = 0; u<headerCount; ++u) {
+        free(headersNames[u]);
+        free(headersValues[u]);
+    }
+    free(headersNames);
+    free(headersValues);
     return process_intervention(transInt);
 }
 
@@ -562,7 +601,8 @@ VCL_INT v_matchproto_(td_sec_sec_do_process_response_body)
             VSL(SLT_Error, ctx->sp->vxid,
                 "[vmodsec] - Iteration on resp.body didn't succeed. %d", ret);
 
-            return -1;
+            msc_process_response_body(transInt->trans);
+            return process_intervention(transInt);
         }
 
         VSL(SLT_Debug, ctx->sp->vxid, "[vmodsec] - Processing Response Body");

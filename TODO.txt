@@ -1,0 +1,2 @@
+Handle Varnish requests on stream (request / deliver)
+VRT_AddFilter(ctx, &td_sec_vfp_modsec, &td_sec_vdp_modsec);
