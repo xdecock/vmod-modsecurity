@@ -1,4 +1,10 @@
-vmod-modsecurity (0.1.1) UNRELEASED; urgency=medium
+vmod-modsecurity (2.0.1) RELEASED; urgency=medium
+
+  * New release for varnish 7.2.0+ with an effectively working binding, and effective blocking now possible
+
+ -- Xavier De Cock <xavier@qualifio.com>  Wed, 23 Nov 2022 17:07:52 +0100
+
+vmod-modsecurity (0.1.1) RELEASED; urgency=medium
 
   * Initial release.
 
