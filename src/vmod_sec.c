@@ -22,6 +22,10 @@ typedef struct Rules_t RulesSet;
 #include "vsb.h"
 #include "vcc_sec_if.h"
 
+#ifndef NO_VXID
+#define NO_VXID 0
+#endif
+
 /*
  * This structure is the one backing the MODSecurity Object
  */
@@ -61,8 +65,8 @@ static int process_intervention(struct vmod_sec_struct_trans_int *transInt);
  */
 void vmod_sec_log_callback(void *ref, const void *message)
 {
-    VSL(SLT_Error, 0, "[vmodsec] - Logger -- ");
-    VSL(SLT_Error, 0, "%s", (const char *)message);
+    VSL(SLT_Error, NO_VXID, "[vmodsec] - Logger -- ");
+    VSL(SLT_Error, NO_VXID, "%s", (const char *)message);
 }
 
 /*
@@ -143,7 +147,7 @@ VCL_VOID v_matchproto_(td_sec_sec__init)
     AN(vpp);
     AZ(*vpp);
 
-    VSL(SLT_Debug, 0, "[vmodsec] - object [%s] initialized using modsecurity %s",
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - object [%s] initialized using modsecurity %s",
         vcl_name, MODSECURITY_VERSION);
 
     modsec = msc_init();
@@ -188,7 +192,7 @@ VCL_INT v_matchproto_(td_sec_sec_add_rule)
 {
     int ret;
     const char *error = NULL;
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - VCL provided rule", rule);
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - [%s] - VCL provided rule", rule);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
 
     if (ctx->method != VCL_MET_INIT) {
@@ -198,11 +202,11 @@ VCL_INT v_matchproto_(td_sec_sec_add_rule)
     ret = msc_rules_add(vp->rules_set, rule, &error);
     if (ret < 0)
     {
-        VSL(SLT_Error, 0, "[vmodsec] - Problems loading the VCL provided rule --\n");
-        VSL(SLT_Error, 0, "%s\n", error);
+        VSL(SLT_Error, NO_VXID, "[vmodsec] - Problems loading the VCL provided rule --\n");
+        VSL(SLT_Error, NO_VXID, "%s\n", error);
         return -1;
     }
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the VCL provided rule", rule);
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - [%s] - Loaded the VCL provided rule", rule);
     return 0;
 }
 
@@ -220,7 +224,7 @@ VCL_INT v_matchproto_(td_sec_sec_add_rules)
     }
 
 
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Try to load the rules", args->rules_path);
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - [%s] - Try to load the rules", args->rules_path);
     CHECK_OBJ_NOTNULL(vp, VMOD_SEC_SEC_MAGIC_BITS);
     if (args->valid_key)
     {
@@ -232,11 +236,11 @@ VCL_INT v_matchproto_(td_sec_sec_add_rules)
     }
     if (ret < 0)
     {
-        VSL(SLT_Error, 0, "[vmodsec] - Problems loading the rules --\n");
-        VSL(SLT_Error, 0, "%s\n", error);
+        VSL(SLT_Error, NO_VXID, "[vmodsec] - Problems loading the rules --\n");
+        VSL(SLT_Error, NO_VXID, "%s\n", error);
         return -1;
     }
-    VSL(SLT_Debug, 0, "[vmodsec] - [%s] - Loaded the rules", args->rules_path);
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - [%s] - Loaded the rules", args->rules_path);
     return 0;
 }
 
@@ -429,7 +433,7 @@ static int v_matchproto_(objiterate_f)
     struct vmod_sec_struct_trans_int *transInt = (struct vmod_sec_struct_trans_int *)((struct vmod_priv *)priv)->priv;
     ret = (msc_append_request_body(transInt->trans, ptr, len)) == 1 ? 0 : -1;
 #ifdef VMOD_SEC_DEBUG
-    VSL(SLT_Debug, 0, "[vmodsec] - Reading request body [%ld] read, [%d] ret", len, ret);
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - Reading request body [%ld] read, [%d] ret", len, ret);
 #endif
     return ret;
 }
@@ -566,7 +570,7 @@ static int v_matchproto_(objiterate_f)
     int ret;
     struct vmod_sec_struct_trans_int *transInt = (struct vmod_sec_struct_trans_int *)((struct vmod_priv *)priv)->priv;
     ret = (msc_append_response_body(transInt->trans, ptr, len)) == 1 ? 0 : -1;
-    VSL(SLT_Debug, 0, "[vmodsec] - Reading response body [%ld] read, [%d] ret", len, ret);
+    VSL(SLT_Debug, NO_VXID, "[vmodsec] - Reading response body [%ld] read, [%d] ret", len, ret);
     return ret;
 }
 
@@ -655,7 +659,7 @@ static int process_intervention(struct vmod_sec_struct_trans_int *transInt)
 {
     int z = msc_intervention(transInt->trans, &transInt->intervention);
     if (z != 0) {
-        VSL(SLT_Debug, 0, "[vmodsec] - INTERVENTION [%d]", z);
+        VSL(SLT_Debug, NO_VXID, "[vmodsec] - INTERVENTION [%d]", z);
     }
     return z;
 }
