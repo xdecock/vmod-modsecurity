@@ -1,3 +1,9 @@
+vmod-modsecurity (2.1.1) UNRELEASED; urgency=medium
+
+  * New release for varnish 7.3.0+ mostly change on VSL signature
+
+ -- Xavier De Cock <xavier@qualifio.com>  Wed, 21 Jun 2023 15:06:13 +0200
+
 vmod-modsecurity (2.0.1) RELEASED; urgency=medium
 
   * New release for varnish 7.2.0+ with an effectively working binding, and effective blocking now possible
