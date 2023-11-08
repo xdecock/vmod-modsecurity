@@ -86,45 +86,45 @@ This will add a rules file, should follow the modsecurity syntax too, if key is 
 $Method INT .dump_rules()
 This will dump rules to stdout
 
-$Method INT .new_conn(PRIV_TOP, STRING client_ip, INT client_port, STRING server_ip, INT server_port, [STRING transaction_id])
+$Method INT .new_conn(PRIV_TASK, STRING client_ip, INT client_port, STRING server_ip, INT server_port, [STRING transaction_id])
 Handles a new connection, requires client and server ip and port
 You can optionaly provide a transaction_id
 
-$Method INT .process_url(PRIV_TOP, STRING req_url, STRING protocol, STRING http_version)
+$Method INT .process_url(PRIV_TASK, STRING req_url, STRING protocol, STRING http_version)
 Process the url, method and http version
 
 #require body buffered TODO, implement as stream buffer
-$Method INT .do_process_request_body(PRIV_TOP, BOOL capture_body = 1)
+$Method INT .do_process_request_body(PRIV_TASK, BOOL capture_body = 1)
 This mark the request body as "to be processed, otherwise just skip the record, 
 This needs std.cache_req_body(500KB) to be set
 
-$Method INT .process_response(PRIV_TOP, STRING protocol="HTTP 1.1")
+$Method INT .process_response(PRIV_TASK, STRING protocol="HTTP 1.1")
 This handles response headers / status code etc etc
 
 # TODO implement as VFP
-$Method INT .do_process_response_body(PRIV_TOP, BOOL capture_body = 1)
+$Method INT .do_process_response_body(PRIV_TASK, BOOL capture_body = 1)
 This will handle the response body
 
-$Method INT .update_status_code(PRIV_TOP, INT status_code)
+$Method INT .update_status_code(PRIV_TASK, INT status_code)
 This receives the response status code
 
 # Kill the current connection
-$Method INT .conn_close(PRIV_TOP)
+$Method INT .conn_close(PRIV_TASK)
 
 #Intervention reading
-$Method BOOL .intervention_getDisrupt(PRIV_TOP)
+$Method BOOL .intervention_getDisrupt(PRIV_TASK)
 Get disrupt field from ModSecurityIntervention
 
-$Method INT .intervention_getStatus(PRIV_TOP)
+$Method INT .intervention_getStatus(PRIV_TASK)
 Get status field from ModSecurityIntervention
 
-$Method STRING .intervention_getUrl(PRIV_TOP)
+$Method STRING .intervention_getUrl(PRIV_TASK)
 Get url field from ModSecurityIntervention if there's a redirection
 
-$Method DURATION .intervention_getPause(PRIV_TOP)
+$Method DURATION .intervention_getPause(PRIV_TASK)
 Get pause field from ModSecurityIntervention, allows to delay response
 
-$Method STRING .intervention_getLog(PRIV_TOP)
+$Method STRING .intervention_getLog(PRIV_TASK)
 Get the log entry linked to the current ModSecurityIntervention
 
 $Method STRING .version()
